@@ -26,7 +26,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   it('should grant GLOBAL permission regardless of attributes', () => {
     const landlord: RequestUserContext = {
       id: 'usr_landlord',
-      email: 'landlord@rental.vn',
+      phoneMasked: '090****567',
       tenantId: BUILDING_A,
       roles: [RentalRole.LANDLORD],
       rules: [
@@ -46,7 +46,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   it('should restrict OWN scoped permissions to the tenant’s own records', () => {
     const tenantUser: RequestUserContext = {
       id: 'usr_tenant',
-      email: 'tenant@rental.vn',
+      phoneMasked: '090****567',
       tenantId: BUILDING_A,
       roles: [RentalRole.TENANT],
       rules: [{ resource: 'invoices', action: Action.READ, scope: Scope.OWN, effect: PermissionEffect.GRANT }],
@@ -61,7 +61,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   it('should restrict DEPARTMENT scoped permissions to the assigned building (room.buildingId === user.buildingId)', () => {
     const manager: RequestUserContext = {
       id: 'usr_pm',
-      email: 'pm@rental.vn',
+      phoneMasked: '090****567',
       tenantId: BUILDING_A,
       roles: [RentalRole.PROPERTY_MANAGER],
       rules: [{ resource: 'rooms', action: Action.READ, scope: Scope.DEPARTMENT, effect: PermissionEffect.GRANT }],
@@ -80,7 +80,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   it('should allow actions from MANAGE but block a specific action with direct DENY override', () => {
     const manager: RequestUserContext = {
       id: 'usr_pm',
-      email: 'pm@rental.vn',
+      phoneMasked: '090****567',
       tenantId: BUILDING_A,
       roles: [RentalRole.PROPERTY_MANAGER],
       rules: [
@@ -102,7 +102,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   it('should enforce Direct DENY even when the user has GLOBAL GRANT', () => {
     const restrictedLandlord: RequestUserContext = {
       id: 'usr_landlord_restricted',
-      email: 'landlord2@rental.vn',
+      phoneMasked: '090****567',
       tenantId: BUILDING_A,
       roles: [RentalRole.LANDLORD],
       rules: [
@@ -122,7 +122,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   it('should grant a temporary cross-building permission via Direct GRANT override', () => {
     const accountant: RequestUserContext = {
       id: 'usr_acc',
-      email: 'accountant@rental.vn',
+      phoneMasked: '090****567',
       tenantId: BUILDING_A,
       roles: [RentalRole.ACCOUNTANT],
       rules: [
@@ -146,7 +146,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   it('should evaluate custom conditions (status-based ABAC constraint)', () => {
     const manager: RequestUserContext = {
       id: 'usr_pm',
-      email: 'pm@rental.vn',
+      phoneMasked: '090****567',
       roles: [RentalRole.PROPERTY_MANAGER],
       rules: [
         {
@@ -167,7 +167,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   });
 
   it('should deny all actions when user has no permissions (fail-safe default)', () => {
-    const guest: RequestUserContext = { id: 'usr_guest', email: 'guest@rental.vn', roles: [], rules: [] };
+    const guest: RequestUserContext = { id: 'usr_guest', phoneMasked: '090****567', roles: [], rules: [] };
 
     const ability = factory.createForUser(guest);
     const anyRoom = { __type: 'rooms', userId: 'usr_guest' };
@@ -180,7 +180,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   it('should NOT grant DEPARTMENT scope to a user without an assigned building (privilege escalation guard)', () => {
     const unassignedGuard: RequestUserContext = {
       id: 'usr_guard',
-      email: 'guard@rental.vn',
+      phoneMasked: '090****567',
       roles: [RentalRole.GUARD],
       rules: [{ resource: 'meters', action: Action.CREATE, scope: Scope.DEPARTMENT, effect: PermissionEffect.GRANT }],
     };
@@ -194,7 +194,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   it('should not let custom conditions widen the building scope condition', () => {
     const manager: RequestUserContext = {
       id: 'usr_pm',
-      email: 'pm@rental.vn',
+      phoneMasked: '090****567',
       tenantId: BUILDING_A,
       roles: [],
       rules: [
@@ -216,7 +216,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   it('should rank scopes GLOBAL > DEPARTMENT > OWN when checking required scope', () => {
     const globalReader: RequestUserContext = {
       id: 'usr_g',
-      email: 'g@rental.vn',
+      phoneMasked: '090****567',
       roles: [],
       rules: [{ resource: 'rooms', action: Action.MANAGE, scope: Scope.GLOBAL, effect: PermissionEffect.GRANT }],
     };
@@ -226,7 +226,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   });
 
   it('should memoize the ability per user object', () => {
-    const user: RequestUserContext = { id: 'u', email: 'u@x', roles: [], rules: [] };
+    const user: RequestUserContext = { id: 'u', phoneMasked: '090****567', roles: [], rules: [] };
     expect(factory.createForUser(user)).toBe(factory.createForUser(user));
   });
 
@@ -237,7 +237,7 @@ describe('CaslAbilityFactory with Direct Overrides (Grant/Deny) & ABAC', () => {
   describe('Default rental role matrix', () => {
     const userWithRoles = (roles: RentalRole[], userId = 'usr_1'): RequestUserContext => ({
       id: userId,
-      email: `${userId}@rental.vn`,
+      phoneMasked: '090****567',
       tenantId: BUILDING_A,
       roles,
       rules: resolveRolePermissions(roles),

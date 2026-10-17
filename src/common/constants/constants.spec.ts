@@ -18,6 +18,11 @@ describe('Common Constants & Regex Specifications', () => {
       expect(REGEX_PATTERNS.VIETNAM_PHONE.test('+84912345678')).toBe(true);
       expect(REGEX_PATTERNS.VIETNAM_PHONE.test('0123456789')).toBe(false); // Đầu số cũ
       expect(REGEX_PATTERNS.VIETNAM_PHONE.test('12345')).toBe(false);
+      // Ký tự '|' từng lọt qua lớp ký tự 5[6|8|9] / 7[0|6-9]
+      expect(REGEX_PATTERNS.VIETNAM_PHONE.test('05|1234567')).toBe(false);
+      expect(REGEX_PATTERNS.VIETNAM_PHONE.test('07|1234567')).toBe(false);
+      expect(REGEX_PATTERNS.VIETNAM_PHONE.test('0521234567')).toBe(true); // Vietnamobile 052
+      expect(REGEX_PATTERNS.VIETNAM_PHONE.test('0541234567')).toBe(false); // 054 chưa cấp cho di động
     });
 
     it('should validate rental identifiers (room number, billing month, license plate, tax code)', () => {

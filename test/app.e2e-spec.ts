@@ -118,7 +118,7 @@ describe('Room Management API (e2e, real PostgreSQL + Redis)', () => {
   let tokens: JwtTokenService;
 
   const tokenFor = (userId: string, extra: Partial<RequestUserContext> = {}) =>
-    tokens.signAccessToken({ sub: userId, email: `${userId}@rental.test`, tenantId: TENANT_ID, rules: [], ...extra });
+    tokens.signAccessToken({ sub: userId, phoneMasked: '090****567', tenantId: TENANT_ID, rules: [], ...extra });
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({

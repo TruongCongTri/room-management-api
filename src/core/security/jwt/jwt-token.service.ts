@@ -2,9 +2,10 @@
  * Xác thực access token dùng chung cho HTTP (JwtAuthGuard) và WebSocket handshake (WsJwtGuard):
  *  - Ghim thuật toán (chống tấn công "alg: none" / nhầm lẫn HS256 ↔ RS256), kiểm tra issuer/audience.
  *  - Xác thực cấu trúc claims → RequestUserContext.
+ *  - Từ chối token của phiên đã bị thu hồi (claim `sid` nằm trong SessionRevocationStore).
  *  - Bổ sung ma trận quyền từ cache khi token không nhúng sẵn `rules`.
  */
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'crypto';
 import { AppConfigService } from '../../config/app-config.service';
@@ -12,6 +13,7 @@ import { RequestUserContext } from '../../context/request-context.model';
 import { UserPermissionResolver } from '../../access-control/user-permission.resolver';
 import { SystemErrorCode } from '../../../common/constants/error-codes.constant';
 import { AccessTokenInput, accessTokenClaimsSchema } from './jwt.claims';
+import { SessionRevocationStore } from './session-revocation.store';
 
 const BEARER_PREFIX = /^Bearer\s+(.+)$/i;
 
@@ -21,6 +23,7 @@ export class JwtTokenService {
     private readonly jwtService: JwtService,
     private readonly config: AppConfigService,
     private readonly permissionResolver: UserPermissionResolver,
+    @Optional() private readonly revocations?: SessionRevocationStore,
   ) {}
 
   extractBearerToken(header: string | string[] | undefined): string | undefined {
@@ -61,10 +64,18 @@ export class JwtTokenService {
       });
     }
 
+    if (claims.sid && (await this.revocations?.isRevoked(claims.sid))) {
+      throw new UnauthorizedException({
+        errorCode: SystemErrorCode.AUTH_SESSION_REVOKED,
+        message: 'This session has been revoked.',
+      });
+    }
+
     const buildingId = claims.buildingId ?? claims.tenantId;
     return {
       id: claims.sub,
-      email: claims.email,
+      phoneMasked: claims.phoneMasked,
+      sessionId: claims.sid,
       tenantId: buildingId,
       buildingIds: claims.buildingIds,
       departmentId: claims.departmentId,

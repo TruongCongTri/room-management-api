@@ -30,7 +30,7 @@ function getParamDecoratorFactoryWithData(decorator: Function, dataParam: any) {
 describe('Common Custom Decorators (Enterprise Suite)', () => {
   const mockUser: RequestUserContext = {
     id: 'usr_enterprise_001',
-    email: 'dev@rental.vn',
+    phoneMasked: '090****567',
     tenantId: 'tenant_vietnam',
     departmentId: 'dep_ENGINEERING',
     roles: ['ADMIN', 'MANAGER'],
@@ -54,11 +54,11 @@ describe('Common Custom Decorators (Enterprise Suite)', () => {
     });
 
     it('should extract a specific field when data argument is provided', () => {
-      const factory = getParamDecoratorFactoryWithData(CurrentUser, 'email');
+      const factory = getParamDecoratorFactoryWithData(CurrentUser, 'phoneMasked');
       const ctx = createMockContext({ user: mockUser });
 
-      const result = factory('email', ctx);
-      expect(result).toBe('dev@rental.vn');
+      const result = factory('phoneMasked', ctx);
+      expect(result).toBe('090****567');
     });
 
     it('should return undefined if request.user is missing', () => {

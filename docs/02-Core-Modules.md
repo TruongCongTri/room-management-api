@@ -7,12 +7,26 @@ This document specifies the business domain modules (`src/modules/`) for the 80-
 ## 1\. Core Domain Directory Structure
 
 src/modules/  
-├── identity/                             \# Authentication, User Accounts & RBAC Role Assignment  
-│   ├── controllers/  
-│   │   └── auth.controller.ts            \# Login, Refresh Token rotation, OTP verification (full enterprise grade auth features)  
-│   ├── services/  
-│   │   └── identity.service.ts           \# Credential validation, CASL permission flattening trigger  
-│   └── identity.module.ts  
+├── identity/                             \# Phone-number sign-in, OTP, sessions, accounts & RBAC assignment (global, no RLS)
+│   ├── controllers/
+│   │   ├── auth.controller.ts            \# /auth: login (+ OTP for finance roles), refresh rotation, logout, activation, reset, me, sessions
+│   │   └── users.controller.ts           \# /users: landlord creates staff accounts, changes roles / buildings / status
+│   ├── services/
+│   │   ├── auth.service.ts               \# Credential check (argon2id), login lock, anti-enumeration, token pair issuance
+│   │   ├── session.service.ts            \# auth_sessions, refresh rotation + reuse detection, revocation denylist
+│   │   ├── otp.service.ts                \# HMAC-hashed 6-digit codes in Redis, cooldown / attempts / daily cap, Zalo (if linked) → SMS
+│   │   ├── password-policy.service.ts    \# Length, phone-digits and common-password rules
+│   │   ├── users.service.ts              \# Accounts, roles, building access, permission-cache eviction
+│   │   └── tenant-account-provisioning.service.ts \# occupant.moved_in → TENANT login linked to tenants.user_id
+│   ├── domain/
+│   │   └── phone-number.ts               \# E.164 normalisation + Vietnamese mobile prefix validation, masking
+│   ├── entities/
+│   │   ├── user.entity.ts
+│   │   ├── user-role.entity.ts
+│   │   ├── user-building-access.entity.ts
+│   │   └── auth-session.entity.ts
+│   ├── dto/                              \# LoginDto, VerifyLoginOtpDto, RefreshTokenDto, RequestOtpDto, ActivateAccountDto, …
+│   └── identity.module.ts                \# Also provides PERMISSION_RULES_LOADER (role_permissions + per-user overrides)
 │  
 ├── tenants/                              \# Tenant Profiles, Encrypted PII & PDPL Consent Ledger  
 │   ├── controllers/  
@@ -31,6 +45,8 @@ src/modules/
 │   │   └── properties.controller.ts      \# Paginated room list, Room Detail, Cached Vacancy Summary  
 │   ├── services/  
 │   │   └── properties.service.ts         \# Index-backed QueryBuilder, XFetch cache & tag invalidation  
+│   ├── guards/
+│   │   └── room-access.guard.ts          \# TENANT: only the room they currently live in (OCCUPANCY_SELF_SCOPE)
 │   ├── entities/  
 │   │   ├── building.entity.ts  
 │   │   ├── room-type.entity.ts  
@@ -123,6 +139,101 @@ src/modules/
 ---
 
 ## 2\. Module 1: `IdentityModule` & `TenantsModule`
+
+### 2.0 Identity & Authentication (`IdentityModule`)
+
+Endpoints: document 04, tag *Identity & Authentication*. Tables: document 03, section 3.0.
+
+* **Sign-in with the phone number.** `PhoneNumber.normalize()` turns `0901 234 567`, `84901234567` or `+84 90 123 4567` into `+84901234567` (strict Vietnamese mobile prefixes; other countries in E.164 for foreign tenants). There is no email login.
+* **Passwords:** argon2id (m = 19 MiB, t = 2, p = 1); 10–128 characters, must not contain the phone number's last 6 digits, rejected when on the common-password list (`422 AUTH_PASSWORD_POLICY_VIOLATION`).
+* **Second factor for money:** `LANDLORD` and `ACCOUNTANT` confirm every login with a 6-digit OTP (`AUTH_MFA_ROLES`). OTPs are random, stored only as an HMAC in Redis, valid 5 minutes, 5 attempts, 60-second resend cooldown shared by all purposes, 5 activation / reset codes and 20 login codes per number per day (Vietnam calendar day), sent by SMS, or Zalo first when the account is linked to a Zalo user (`NotificationModule`). `AUTH_OTP_DEBUG_ECHO=true` (local / test only, refused in production) returns the code as `debugCode` for Postman.
+* **Tokens:** 15-minute access JWT (`sub`, `sid`, `phoneMasked`, `buildingId`, `buildingIds`, `roles`) signed by the existing `JwtTokenService`; opaque refresh token `<sessionId>.<secret>` stored as HMAC-SHA256 keyed with `JWT_REFRESH_SECRET` and **rotated on every refresh** (row lock, so two simultaneous refreshes with one token cannot both win). Re-use of a rotated refresh token revokes the session and alerts the user. Sessions expire after 7 idle days or 30 days in total.
+* **Revocation that works at once:** every revoked session gets `auth:revoked-sid:{sid}` in Redis for the access-token lifetime, and `JwtTokenService.verifyAccessToken()` rejects its tokens with `401 AUTH_SESSION_REVOKED`.
+* **No account enumeration, no brute force:** the same `401 AUTH_CREDENTIALS_INVALID` for wrong password, unknown number and not-yet-activated accounts (unknown numbers are checked against a dummy hash); `@ThrottleSensitive()` per IP; 5 wrong passwords per number in 15 minutes → lock 15 minutes, doubling up to 24 hours (`423 AUTH_ACCOUNT_LOCKED`).
+* **Accounts:** staff accounts are created by the landlord (`POST /users`). Tenant accounts are **created automatically** for every adult occupant with a phone number when they move in (`TenantAccountProvisioningService`, on `occupant.moved_in`), linked to `tenants.user_id` and activated by the tenant with an OTP. Role and building changes evict `permissions:user:{id}`; reducing access revokes the user's sessions.
+* **Audit:** login success / failure, OTP sends, lockouts, password changes, session revocations and reuse detection are written to the WORM audit log (phone numbers masked).
+
+#### 2.0.1 Login and refresh flow
+
+```
+POST /auth/login {phone, password}
+  └─ normalize phone → auth:lock:{phoneKey}? → 423
+  └─ load user (or dummy hash) → argon2.verify
+       ├─ wrong → auth:login-fail++ (5 → lock) → 401 AUTH_CREDENTIALS_INVALID
+       ├─ DISABLED → 403 AUTH_ACCOUNT_DISABLED
+       ├─ finance role → OtpService.send(LOGIN_MFA) → 202 { challengeId }
+       │                 POST /auth/login/mfa {challengeId, code} → continue below
+       └─ SessionService.create(device, ip) → { accessToken (sid), refreshToken = sid.secret }
+
+POST /auth/refresh {refreshToken = sid.secret}
+  └─ lock row auth_sessions(sid) FOR UPDATE
+       ├─ revoked / idle or absolute expiry passed → 401 AUTH_SESSION_REVOKED
+       ├─ SHA256(secret) = previous_refresh_token_hash → revoke (ROTATION_REUSE_DETECTED),
+       │     auth:revoked-sid, security alert → 401 AUTH_REFRESH_TOKEN_REUSED
+       ├─ SHA256(secret) ≠ refresh_token_hash → 401 AUTH_TOKEN_INVALID
+       └─ rotate: previous = current, current = SHA256(newSecret), idle expiry slides → new pair
+```
+
+#### 2.0.2 A tenant sees only the room they live in
+
+`TENANT` has `rooms:read:own` and no `rooms:read:department`, so the room list and vacancy summary are closed to tenants. Room detail is guarded by `RoomAccessGuard`: staff holding `rooms:read:department` pass; anyone else passes **only** when their person profile is an `ACTIVE` occupant of that room's `ACTIVE` contract.
+
+```ts
+// src/core/access-control/occupancy-self-scope.ts — contract, implemented by ContractsModule (module 3)
+export interface OccupancySelfScope {
+  tenantId: string;
+  contractId: string;
+  roomId: string;
+  occupantRole: OccupantRole;
+}
+export interface OccupancySelfScopeResolver {
+  /** The caller's current room in this building, or null (never moved in / moved out / no tenant profile) */
+  resolve(userId: string, buildingId: string): Promise<OccupancySelfScope | null>;
+}
+export const OCCUPANCY_SELF_SCOPE = Symbol('OCCUPANCY_SELF_SCOPE');
+// Until ContractsModule registers the real resolver, the default returns null (fail-closed: tenants see no room).
+
+// src/modules/properties/guards/room-access.guard.ts
+@Injectable()
+export class RoomAccessGuard implements CanActivate {
+  constructor(
+    private readonly abilityFactory: CaslAbilityFactory,
+    @Inject(OCCUPANCY_SELF_SCOPE) private readonly selfScope: OccupancySelfScopeResolver,
+  ) {}
+
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    const req = ctx.switchToHttp().getRequest();
+    const user: RequestUserContext = req.user;
+    if (this.abilityFactory.hasScope(user, RentalResource.ROOMS, Action.READ, Scope.DEPARTMENT)) return true;
+
+    const scope = await this.selfScope.resolve(user.id, user.tenantId); // cached 300 s
+    if (scope?.roomId === req.params.id) return true;
+
+    throw new ForbiddenException({
+      errorCode: SystemErrorCode.AUTH_FORBIDDEN_RESOURCE,
+      message: 'You can only view the room you currently live in.',
+    });
+  }
+}
+
+// src/modules/properties/controllers/properties.controller.ts
+@Get('rooms/mine') // declared before rooms/:id
+@RequirePermissions({ resource: RentalResource.ROOMS, action: Action.READ, scope: Scope.OWN })
+getMyRoom(@CurrentUser() user: RequestUserContext) {
+  return this.propertiesService.getRoomDetailForTenant(user); // 404 BIZ_NO_ACTIVE_ROOM when not living here
+}
+
+@Get('rooms/:id')
+@RequirePermissions({ resource: RentalResource.ROOMS, action: Action.READ }) // OWN or DEPARTMENT
+@UseGuards(RoomAccessGuard)
+getRoomDetail(@Param('id', ParseUUIDStrictPipe) id: string) {
+  return this.propertiesService.getRoomDetail(id);
+}
+```
+
+* Staff with `rooms:read:department` pass through the building condition; a tenant opening another room, or their old room after moving out, gets `403 AUTH_FORBIDDEN_RESOURCE`.
+* The self-scope result is cached as `auth:self-scope:{buildingId}:{userId}` (300 s) and evicted on `occupant.moved_in`, `occupant.moved_out`, `contract.primary_holder_changed` and checkout, so moving out closes access immediately.
+* The same `OCCUPANCY_SELF_SCOPE` resolver backs every other `OWN` endpoint (the tenant's contract, occupancy, invoices, CT01) in later modules.
 
 ### 2.1 Domain Responsibilities & Legal Anchors
 
@@ -243,6 +354,8 @@ export class TenantsService {
 * **Multi-Tier Room Hierarchy (Up to 80 Rooms):** Manages rooms across floors and categories (`STUDIO`, `1BR_DELUXE`, `DUPLEX`) with base pricing from `RoomType` and optional room-level price overrides (`basePriceOverride`).  
     
 * **Appliance & Furniture Renting (`AssetsModule`):** Tracks individual rentable items (e.g., *Daikin Inverter 1.5HP AC*, *Electrolux Washer*, *Toshiba Fridge*, *Sofa Bed*) via `assets` (catalog) \$\\rightarrow\$ `room_assets` (physical unit with `serialNumber`, `conditionGrade`, and `customMonthlyFee` installed in a room) \$\\rightarrow\$ `contract_assets` (items actively rented by the tenant under a lease).  
+    
+* **Who sees which room:** staff (`rooms:read:department`) see every room of the active building; a `TENANT` (`rooms:read:own`) sees only the room they currently live in (`GET /properties/rooms/mine`, or `/{id}` of that room) — section 2.0.2.  
     
 * **Strict Adherence to the 4 Database & API Optimization Rules:**  
     

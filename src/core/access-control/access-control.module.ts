@@ -4,6 +4,7 @@ import { AccessControlService } from './access-control.service';
 import { PermissionsGuard } from './permissions.guard';
 import { PermissionCacheService } from './permission-cache.service';
 import { UserPermissionResolver } from './user-permission.resolver';
+import { OccupancySelfScopeService } from './occupancy-self-scope';
 
 @Global()
 @Module({
@@ -12,6 +13,7 @@ import { UserPermissionResolver } from './user-permission.resolver';
     AccessControlService,
     PermissionCacheService,
     UserPermissionResolver,
+    OccupancySelfScopeService,
     PermissionsGuard,
   ],
   exports: [
@@ -19,6 +21,7 @@ import { UserPermissionResolver } from './user-permission.resolver';
     AccessControlService,
     PermissionCacheService,
     UserPermissionResolver,
+    OccupancySelfScopeService,
     PermissionsGuard,
   ],
 })

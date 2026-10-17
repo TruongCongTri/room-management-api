@@ -138,7 +138,7 @@ const userContext = (user: RequestUserContext): RequestContextData => ({
 
 const managerOf = (buildingId: string): RequestUserContext => ({
   id: `usr_pm_${buildingId.slice(0, 4)}`,
-  email: 'pm@rental.test',
+  phoneMasked: '090****567',
   tenantId: buildingId,
   roles: [RentalRole.PROPERTY_MANAGER],
   rules: [],
@@ -154,7 +154,7 @@ describe('Supporting modules (integration, real PostgreSQL + Redis)', () => {
 
   const tokenFor = (userId: string, roles: string[], extra: Record<string, unknown> = {}) =>
     // Không truyền `rules`: quyền được phân giải từ role (UserPermissionResolver → DEFAULT_ROLE_PERMISSIONS)
-    tokens.signAccessToken({ sub: userId, email: `${userId}@rental.test`, tenantId: BUILDING_A, roles, ...extra });
+    tokens.signAccessToken({ sub: userId, phoneMasked: '090****567', tenantId: BUILDING_A, roles, ...extra });
 
   beforeAll(async () => {
     const moduleFixture = await Test.createTestingModule({
@@ -548,7 +548,22 @@ describe('Supporting modules (integration, real PostgreSQL + Redis)', () => {
   // ===========================================================================
   // AccessControlModule: ma trận quyền mặc định qua HTTP (token không nhúng rules)
   // ===========================================================================
-  describe('Access control (default role matrix over HTTP)', () => {
+  describe('Access control (role matrix from user_roles over HTTP)', () => {
+    // Nguồn quyền là DB (PERMISSION_RULES_LOADER của IdentityModule), KHÔNG phải claim `roles` trong token
+    const userWithRole = async (role: RentalRole): Promise<string> => {
+      const [{ id }] = await dataSource.query(
+        `INSERT INTO users (phone_e164, full_name, status, password_hash)
+         VALUES ('+8490' || lpad((floor(random() * 10000000))::int::text, 7, '0'), $1, 'ACTIVE', 'x') RETURNING id`,
+        [`it-${role}`],
+      );
+      await dataSource.query(`INSERT INTO user_roles (user_id, role_code) VALUES ($1, $2)`, [id, role]);
+      return id;
+    };
+
+    beforeAll(async () => {
+      expect(await runSeeds()).toBe(0); // system_roles + role_permissions
+    });
+
     it.each([
       [RentalRole.GUARD, 403],
       [RentalRole.TENANT, 403],
@@ -557,25 +572,42 @@ describe('Supporting modules (integration, real PostgreSQL + Redis)', () => {
       [RentalRole.ACCOUNTANT, 200],
       [RentalRole.LANDLORD, 200],
     ])('meters:approve:department as %s → %i', async (role, status) => {
+      const userId = await userWithRole(role);
       await http
         .get('/api/v1/it/meters/approve')
-        .set('Authorization', `Bearer ${await tokenFor(`usr_${role.toLowerCase()}`, [role])}`)
+        .set('Authorization', `Bearer ${await tokenFor(userId, [role])}`)
         .expect(status);
     });
 
-    it('should let a tenant read only their own invoice (OWN scope on the loaded record)', async () => {
-      const auth = `Bearer ${await tokenFor('usr_tenant_self', [RentalRole.TENANT])}`;
-      await http.get('/api/v1/it/invoices/usr_tenant_self').set('Authorization', auth).expect(200);
-      await http.get('/api/v1/it/invoices/usr_someone_else').set('Authorization', auth).expect(403);
-    });
-
-    it('should cache the resolved matrix under permissions:user:{id} only when written by identity (no silent cache)', async () => {
-      // Không có PERMISSION_RULES_LOADER: quyền suy ra từ role mỗi request, không ghi cache ngầm
+    it('should ignore a forged role claim: an account without that role in user_roles gets nothing', async () => {
+      const guardId = await userWithRole(RentalRole.GUARD);
       await http
         .get('/api/v1/it/meters/approve')
-        .set('Authorization', `Bearer ${await tokenFor('usr_cache_probe', [RentalRole.ACCOUNTANT])}`)
-        .expect(200);
-      expect(await redis.exists('permissions:user:usr_cache_probe')).toBe(0);
+        .set('Authorization', `Bearer ${await tokenFor(guardId, [RentalRole.LANDLORD])}`)
+        .expect(403);
+      await http
+        .get('/api/v1/it/meters/approve')
+        .set('Authorization', `Bearer ${await tokenFor(randomUUID(), [RentalRole.LANDLORD])}`)
+        .expect(403);
+    });
+
+    it('should let a tenant read only their own invoice (OWN scope on the loaded record)', async () => {
+      const tenantId = await userWithRole(RentalRole.TENANT);
+      const auth = `Bearer ${await tokenFor(tenantId, [RentalRole.TENANT])}`;
+      await http.get(`/api/v1/it/invoices/${tenantId}`).set('Authorization', auth).expect(200);
+      await http.get(`/api/v1/it/invoices/${randomUUID()}`).set('Authorization', auth).expect(403);
+    });
+
+    it('should cache the matrix under permissions:user:{id} and drop the grant once the role is removed and the cache evicted', async () => {
+      const userId = await userWithRole(RentalRole.ACCOUNTANT);
+      const auth = `Bearer ${await tokenFor(userId, [RentalRole.ACCOUNTANT])}`;
+      await http.get('/api/v1/it/meters/approve').set('Authorization', auth).expect(200);
+      expect(await redis.exists(`permissions:user:${userId}`)).toBe(1);
+
+      await dataSource.query(`DELETE FROM user_roles WHERE user_id = $1`, [userId]);
+      await http.get('/api/v1/it/meters/approve').set('Authorization', auth).expect(200); // vẫn từ cache
+      await redis.del(`permissions:user:${userId}`); // UsersService làm việc này khi đổi vai trò
+      await http.get('/api/v1/it/meters/approve').set('Authorization', auth).expect(403);
     });
   });
 

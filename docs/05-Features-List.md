@@ -8,13 +8,24 @@ This document is the functional, security and statutory-compliance feature matri
 
 ## 1. Domain Features & Vietnamese Legal Anchors
 
+### 1.0 Identity & Sign-in
+
+| # | Feature | Roles | Legal anchor | Implementation |
+| :-- | :-- | :-- | :-- | :-- |
+| A1 | **Sign in with phone number + password** | All roles | Law 91/2025/QH15, Decree 13/2023/NĐ-CP (security of personal data) | `POST /auth/login`. Phone normalised to E.164; argon2id passwords (10–128 chars, no phone digits, not a common password). Same `401 AUTH_CREDENTIALS_INVALID` for every failure (no account enumeration); 5 wrong passwords per number → lock 15 min doubling to 24 h |
+| A2 | **OTP second factor for finance roles** | `LANDLORD`, `ACCOUNTANT` | Decree 13/2023/NĐ-CP (technical safeguards) | `202` challenge → `POST /auth/login/mfa`. 6-digit OTP, HMAC-hashed in Redis, 5 min, 5 attempts, 60 s cooldown, 20 login codes per day; SMS (Zalo first when the account is linked to Zalo) |
+| A3 | **Account activation & password reset by OTP** | All roles | — | `POST /auth/otp/request` (always `202`), `POST /auth/activate`, `POST /auth/password/reset` (revokes every session) |
+| A4 | **Sessions you can see and end** | All roles | — | 15-min access JWT + opaque refresh token rotated on every use; re-use of an old refresh token revokes the session and alerts the user. `GET /auth/sessions`, `DELETE /auth/sessions/{id}`, `POST /auth/logout`, `POST /auth/logout-all`; revoked tokens stop working at once (Redis denylist) |
+| A5 | **Accounts follow real roles** | `LANDLORD` (staff); automatic (tenants) | Law 91/2025/QH15 (data minimisation) | Landlord creates staff accounts with roles and buildings (`POST /users`, `PATCH /users/{id}`). Every adult occupant with a phone gets a `TENANT` login when they move in, linked to their own profile; children and people without a phone get none |
+| A6 | **A tenant sees only the room they live in** | `TENANT` | Law 91/2025/QH15 (purpose limitation) | `rooms:read:own`: `GET /properties/rooms/mine`, or `/{id}` of that same room. Any other room → `403`; access ends the moment they move out (self-scope cache evicted). No room list, no vacancy data |
+
 ### 1.1 Properties & Assets
 
 | # | Feature | Roles | Legal anchor | Implementation |
 | :-- | :-- | :-- | :-- | :-- |
 | 01 | **Room directory (80 rooms)** | `LANDLORD`, `PROPERTY_MANAGER`, `GUARD` | Housing Law 2023 (No. 27/2023/QH15) | `GET /properties/rooms`: paginated `SelectQueryBuilder` on `idx_rooms_bld_status_type` / `idx_rooms_available_covering`, 6-field projection, no sequential scans |
 | 02 | **Vacancy summary by room type** | `LANDLORD`, `PROPERTY_MANAGER`, `ACCOUNTANT` | — (operational KPI) | One `GROUP BY` query cached as `cache:{buildingId}:rooms:vacancies:summary` (single-flight + XFetch), invalidated through tag `tag:{buildingId}:rooms` on check-in, checkout and holder changes |
-| 03 | **Room detail in one query** | `LANDLORD`, `PROPERTY_MANAGER` | Civil Code 2015 | Room, room type, active contract, **current contract holder**, **number of people living there** and **number with registered residence**, rented appliances — one joined query (no N+1) |
+| 03 | **Room detail in one query** | `LANDLORD`, `PROPERTY_MANAGER`; `TENANT` (own room only, A6) | Civil Code 2015 | Room, room type, active contract, **current contract holder**, **number of people living there** and **number with registered residence**, rented appliances — one joined query (no N+1) |
 | 04 | **Appliance & furniture catalogue** | `LANDLORD`, `PROPERTY_MANAGER` (tenant: own room, read) | Civil Code 2015, Art. 472–482 | `assets → room_assets → contract_assets`: serial numbers, condition grades (`GRADE_A_NEW`, `GRADE_B_GOOD`, `GRADE_C_FAIR`), replacement values, monthly rental fees |
 
 ### 1.2 People, Shared Occupancy & Contracts
@@ -83,7 +94,10 @@ Every endpoint passes `JwtAuthGuard → CustomThrottlerGuard → RolesGuard → 
 | Resource / action | Permission | `LANDLORD` | `PROPERTY_MANAGER` | `ACCOUNTANT` | `GUARD` | `TENANT` |
 | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
 | Building & tax settings | `buildings:manage:global` | ✅ GLOBAL | ❌ | ❌ | ❌ | ❌ |
+| Own sign-in, password & sessions | authenticated | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Staff accounts, roles & building access** | `users:manage:global` | ✅ GLOBAL | ❌ | ❌ | ❌ | ❌ |
 | Room directory & vacancy | `rooms:read:department` | ✅ GLOBAL | ✅ | 🔍 | 🔍 | ❌ |
+| **Room detail of the room they live in** | `rooms:read:own` | ✅ GLOBAL | ✅ | 🔍 | 🔍 | 🔍 OWN room only, while living there |
 | Room price & status | `rooms:update:department` | ✅ GLOBAL | ✅ | ❌ | ❌ | ❌ |
 | Appliance catalogue | `assets:manage:department` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN room |
 | Person profiles & encrypted CCCD | `tenants:manage:department` / `tenants:read:own` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN profile |
@@ -99,7 +113,7 @@ Every endpoint passes `JwtAuthGuard → CustomThrottlerGuard → RolesGuard → 
 | **Residence (CT01) per occupant** & PCCC | `compliance:manage:department` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN CT01 |
 | WORM audit log | `audit:read:*` | ✅ GLOBAL | ✅ | ✅ | 🔍 OWN actions | 🔍 OWN actions |
 
-A tenant user is linked to their own person profile, so `OWN` covers their profile, their occupancy, the contracts they live under, and the invoices addressed to them.
+A tenant user is linked to their own person profile (`tenants.user_id`), so `OWN` covers their profile, their occupancy, the room and contract they currently live under, and the invoices addressed to them. Room access is derived from the **active** occupancy, so it ends at move-out; their past invoices and settlement stay readable.
 
 ---
 
@@ -121,6 +135,7 @@ A tenant user is linked to their own person profile, so `OWN` covers their profi
 | 1. BOOTSTRAP & SECURITY (doc 01)                                                               |
 |  zod config -> migrations Job (RLS, WORM, occupancy constraints) -> reference seeds             |
 |  Helmet -> CORS -> JwtAuthGuard -> Throttler -> Permissions -> X-Building-ID -> RlsService       |
+|  Sign-in: phone + password (+ OTP for LANDLORD / ACCOUNTANT) -> 15-min JWT + rotating refresh  |
 +------------------------------------------------------------------------------------------------+
                                             │
 +------------------------------------------------------------------------------------------------+
@@ -129,6 +144,7 @@ A tenant user is linked to their own person profile, so `OWN` covers their profi
 |  passport encrypted + id_card_hash blind index, consent (guardian for children)                 |
 |  ContractsService: room lock + partial unique index; holder = PRIMARY_HOLDER, others CO_OCCUPANT |
 |  1-month deposit HELD in deposit_ledgers                                                        |
+|  Each adult occupant with a phone: TENANT login (PENDING_ACTIVATION -> OTP activation)         |
 |  Each occupant: residence PENDING_DECLARATION -> CT01 PDF (or foreigner declaration)             |
 |  Outbox -> BullMQ -> lease, handover, CT01 PDFs (pdfkit)                                        |
 +------------------------------------------------------------------------------------------------+

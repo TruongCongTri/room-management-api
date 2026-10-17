@@ -62,7 +62,7 @@ describe('DomainEventsModule (Enterprise Event-Driven Suite)', () => {
       {
         traceId: 'TRACE-HTTP-42',
         isBackgroundJob: false,
-        user: { id: 'usr_9', email: 'a@b.c', tenantId, roles: [], rules: [] },
+        user: { id: 'usr_9', phoneMasked: '090****567', tenantId, roles: [], rules: [] },
       },
       async () => {
         const event = new OrderCreatedEvent({ orderId: 'ORD-1' });

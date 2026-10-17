@@ -40,7 +40,6 @@ export class AppEventPublisher {
               user: event.metadata.actorId
                 ? {
                     id: event.metadata.actorId,
-                    email: `${event.metadata.actorId}@internal.system`,
                     roles: ['SYSTEM_EVENT_LISTENER'],
                     rules: [],
                   }

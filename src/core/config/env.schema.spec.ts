@@ -121,6 +121,24 @@ describe('AppConfigModule - Env Validation & ConfigService (Unit Test)', () => {
     );
   });
 
+  it('should forbid echoing OTP codes in production but allow it locally', () => {
+    expect(validateEnv({ ...validMockEnv, AUTH_OTP_DEBUG_ECHO: 'true' }).AUTH_OTP_DEBUG_ECHO).toBe(true);
+    expect(() => validateEnv({ ...productionEnv, AUTH_OTP_DEBUG_ECHO: 'true' })).toThrow(/AUTH_OTP_DEBUG_ECHO/);
+    expect(() => validateEnv({ ...productionEnv, AUTH_OTP_DEBUG_ECHO: 'false' })).not.toThrow();
+  });
+
+  it('should validate session durations and derive the auth settings in seconds', () => {
+    expect(() => validateEnv({ ...validMockEnv, JWT_REFRESH_EXPIRES_IN: 'seven days' })).toThrow(/JWT_REFRESH_EXPIRES_IN/);
+    expect(() => validateEnv({ ...validMockEnv, AUTH_REFRESH_ABSOLUTE_EXPIRES_IN: '0d' })).toThrow(/AUTH_REFRESH_ABSOLUTE_EXPIRES_IN/);
+    expect(() => validateEnv({ ...validMockEnv, AUTH_LOCK_BASE_SEC: '3600', AUTH_LOCK_MAX_SEC: '600' })).toThrow(/AUTH_LOCK_MAX_SEC/);
+
+    const auth = buildConfig({ ...validMockEnv, JWT_EXPIRES_IN: '15m', JWT_REFRESH_EXPIRES_IN: '7d', AUTH_MFA_ROLES: ' LANDLORD , ACCOUNTANT,' }).auth;
+    expect(auth.accessTokenTtlSec).toBe(900);
+    expect(auth.refreshIdleTtlSec).toBe(604_800);
+    expect(auth.refreshAbsoluteTtlSec).toBe(2_592_000);
+    expect(auth.mfaRoles).toEqual(['LANDLORD', 'ACCOUNTANT']);
+  });
+
   it('should reject inconsistent pool and shutdown settings', () => {
     expect(() => validateEnv({ ...validMockEnv, DB_POOL_MIN: '50', DB_POOL_MAX: '10' })).toThrow(
       /DB_POOL_MIN must be <= DB_POOL_MAX/,

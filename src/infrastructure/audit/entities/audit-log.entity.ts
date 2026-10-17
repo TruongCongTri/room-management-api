@@ -25,8 +25,9 @@ export class AuditLogEntity {
   @Column({ type: 'varchar', length: 100, name: 'actor_id' })
   actorId: string;
 
-  @Column({ type: 'varchar', length: 255, name: 'actor_email', nullable: true })
-  actorEmail?: string | null;
+  /** Nhãn hiển thị của người thực hiện: số điện thoại đã che (090****567); NULL với tác vụ hệ thống */
+  @Column({ type: 'varchar', length: 255, name: 'actor_label', nullable: true })
+  actorLabel?: string | null;
 
   @Column({ type: 'varchar', length: 100, name: 'department_id', nullable: true })
   departmentId?: string | null;

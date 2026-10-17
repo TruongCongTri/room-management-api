@@ -13,6 +13,7 @@ import {
 } from './resolvers/redis.resolver';
 import { readPemOrPath } from './resolvers/pem.util';
 import { isHmacAlgorithm, JwtAlgorithm } from './schemas/security.schema';
+import { parseDurationSeconds } from '../security/jwt/duration';
 import { FeatureFlagRule } from './schemas/app.schema';
 import {
   EVN_RESIDENTIAL_TIERS,
@@ -193,6 +194,34 @@ export class AppConfigService {
         refreshSecret: this.get('JWT_REFRESH_SECRET'),
         refreshExpiresIn: this.get('JWT_REFRESH_EXPIRES_IN'),
         clockToleranceSec: this.get('JWT_CLOCK_TOLERANCE_SEC'),
+      },
+    };
+  }
+
+  /** Đăng nhập bằng số điện thoại, OTP, khóa đăng nhập, phiên refresh (IdentityModule) */
+  get auth() {
+    return {
+      accessTokenTtlSec: parseDurationSeconds(this.get('JWT_EXPIRES_IN')),
+      refreshIdleTtlSec: parseDurationSeconds(this.get('JWT_REFRESH_EXPIRES_IN')),
+      refreshAbsoluteTtlSec: parseDurationSeconds(this.get('AUTH_REFRESH_ABSOLUTE_EXPIRES_IN')),
+      refreshTokenPepper: this.get('JWT_REFRESH_SECRET') as string,
+      mfaRoles: this.get('AUTH_MFA_ROLES')
+        .split(',')
+        .map((role) => role.trim())
+        .filter(Boolean),
+      otp: {
+        ttlSec: this.get('AUTH_OTP_TTL_SEC'),
+        maxAttempts: this.get('AUTH_OTP_MAX_ATTEMPTS'),
+        resendCooldownSec: this.get('AUTH_OTP_RESEND_COOLDOWN_SEC'),
+        dailyLimit: this.get('AUTH_OTP_DAILY_LIMIT'),
+        mfaDailyLimit: this.get('AUTH_MFA_OTP_DAILY_LIMIT'),
+        debugEcho: this.get('AUTH_OTP_DEBUG_ECHO'),
+      },
+      login: {
+        maxFailures: this.get('AUTH_LOGIN_MAX_FAILURES'),
+        failureWindowSec: this.get('AUTH_LOGIN_FAILURE_WINDOW_SEC'),
+        lockBaseSec: this.get('AUTH_LOCK_BASE_SEC'),
+        lockMaxSec: this.get('AUTH_LOCK_MAX_SEC'),
       },
     };
   }

@@ -14,7 +14,9 @@ To prevent exposing internal management endpoints to mobile clients, `SwaggerMod
      
 2. **Guard Mobile Metering Portal (`/api/docs/guard`):** For `GUARD` role (Missing meter checklist, 15-minute S3 Presigned `PUT` URL generation, and manual water/electricity reading submission).  
      
-3. **Tenant Self-Service & Webhook Portal (`/api/docs/external`):** For `TENANT` role and external VietQR banking webhooks.
+3. **Tenant Self-Service & Webhook Portal (`/api/docs/external`):** For `TENANT` role (sign-in, own room, own invoices) and external VietQR banking webhooks.
+
+The `Identity & Authentication` endpoints (`/auth/*`) appear in all three portals; `/users` only in the admin portal.
 
 ### 1.2 Mandatory Enterprise Headers & Security Matrix
 
@@ -39,6 +41,25 @@ To prevent exposing internal management endpoints to mobile clients, `SwaggerMod
 * **Success JSON Envelope (`TransformInterceptor`):** All `200`/`201` JSON responses are wrapped deterministically. Binary file streams (`application/pdf` and `.xlsx` via `DocumentReportModule`) bypass JSON wrapping automatically.  
     
 * **Error Envelope (`AllExceptionsFilter` & `HttpExceptionFilter` — RFC 7807):** Maps NestJS validation failures, CASL permission denials, and PostgreSQL kernel errors (`23505` unique violation \$\\rightarrow\$ `409 Conflict`, `23503` FK violation \$\\rightarrow\$ `400 Bad Request`, `40P01` deadlock \$\\rightarrow\$ `409 Conflict`) into a unified RFC 7807 payload with production stack-trace suppression.
+
+### 1.4 Authentication & Session Model (`IdentityModule`)
+
+Sign-in uses the **phone number**, not email. The rules below apply to every role; the endpoints are in the `Identity & Authentication` tag.
+
+| Topic | Rule |
+| :-- | :-- |
+| Login identifier | Phone number normalised to E.164 before any lookup: `0901 234 567`, `84901234567` and `+84 90 123 4567` all become `+84901234567`. Vietnamese mobile prefixes are validated strictly; other countries are accepted in E.164 form (foreign tenants). |
+| Password | argon2id (m = 19 MiB, t = 2, p = 1). 10–128 characters; must not contain the phone number's last 6 digits; rejected if it is on the common-password list → `422 AUTH_PASSWORD_POLICY_VIOLATION` with the failed rules in `details`. |
+| Second factor | `LANDLORD` and `ACCOUNTANT` (finance roles, `AUTH_MFA_ROLES`) confirm every login with a 6-digit OTP: `POST /auth/login` answers `202` with a `challengeId`, `POST /auth/login/mfa` returns the tokens. |
+| OTP | Random 6 digits, stored only as HMAC-SHA256 in Redis; 5-minute lifetime, 5 attempts (then the challenge is burned), 60-second resend cooldown, 5 activation / reset codes and 20 login codes per phone per day. Sent by SMS, or through Zalo first when the account is linked to a Zalo user. Local / test only: `AUTH_OTP_DEBUG_ECHO=true` returns the code as `debugCode` (refused in production). Purposes: `LOGIN_MFA`, `ACTIVATE_ACCOUNT`, `RESET_PASSWORD`. |
+| Access token | JWT, 15 minutes. Claims: `sub`, `sid` (session id), `phoneMasked`, `buildingId`, `buildingIds`, `roles`, `typ = access`, `jti`. No raw phone or ID number inside the token. |
+| Refresh token | Opaque `<sessionId>.<256-bit secret>`; only its HMAC-SHA256 (keyed with `JWT_REFRESH_SECRET`) is stored (`auth_sessions.refresh_token_hash`). Rotated on every use. Presenting an already-rotated token revokes the whole session (`401 AUTH_REFRESH_TOKEN_REUSED`) and notifies the account owner. Idle expiry 7 days, absolute expiry 30 days. |
+| Revocation | Logout, logout-all, password change / reset, account disable, access reduction and reuse detection set `auth_sessions.revoked_at`. The Redis key `auth:revoked-sid:{sid}` (TTL = access-token lifetime) makes access tokens of that session fail at once with `401 AUTH_SESSION_REVOKED`. |
+| Brute force | `@ThrottleSensitive()` per IP on every public `/auth/*` route, plus 5 wrong passwords for one phone number within 15 minutes → locked for 15 minutes, doubling up to 24 hours (`423 AUTH_ACCOUNT_LOCKED`, `Retry-After`). |
+| No account enumeration | Wrong password, unknown phone number and not-yet-activated account all return the same `401 AUTH_CREDENTIALS_INVALID`; unknown numbers are checked against a dummy hash (same timing) and count towards the lock. `POST /auth/otp/request` always answers `202`. |
+| Tenant accounts | Created automatically (`PENDING_ACTIVATION`, role `TENANT`) for every **adult occupant with a phone number** when they move in, and linked to their person profile (`tenants.user_id`). The tenant activates with an OTP and chooses a password. After moving out the account keeps read access to its own history (invoices, settlement) but loses room access immediately. |
+| Staff accounts | Created by the landlord (`POST /users`) with roles and building access. Role or building changes evict `permissions:user:{id}`; reducing access or disabling the account also revokes the user's sessions. |
+| Tenant room access | A `TENANT` can open **only the room they currently live in**: `GET /properties/rooms/mine`, or `GET /properties/rooms/{id}` for that same room. Any other room → `403 AUTH_FORBIDDEN_RESOURCE`; the same room after moving out → `403`. Tenants have no access to the room list or vacancy summary. |
 
 ---
 
@@ -75,6 +96,10 @@ tags:
   \- name: Observability & Health
 
     description: Kubernetes Liveness/Readiness probes and OpenTelemetry Prometheus metrics (@Public)\[cite: 2, 4\]
+
+  \- name: Identity & Authentication
+
+    description: Phone-number sign-in, OTP second factor, account activation & password reset, refresh-token rotation, sessions and staff accounts
 
   \- name: Properties & Room Directory
 
@@ -165,6 +190,311 @@ paths:
         '503':
 
           description: Pod is draining traffic (SIGTERM) or a critical dependency (DB/Redis) is down\[cite: 2, 4\]
+
+```yaml
+  # ===========================================================================
+  # 1b. IDENTITY & AUTHENTICATION (phone number + password, OTP, sessions)
+  #     No X-Building-ID: users, roles and sessions are global (document 03, 3.0)
+  # ===========================================================================
+  /auth/login:
+    post:
+      tags: [Identity & Authentication]
+      summary: Sign in with phone number and password
+      security: []
+      description: |
+        - `@Public()` + `@ThrottleSensitive()`. The phone number is normalised to E.164 before lookup.
+        - Wrong password, unknown number and not-yet-activated account all return `401 AUTH_CREDENTIALS_INVALID`.
+        - 5 wrong passwords for one number in 15 minutes lock it (15 minutes, doubling up to 24 hours).
+        - `LANDLORD` / `ACCOUNTANT`: answers `202` with an OTP challenge instead of tokens.
+        - Success creates an `auth_sessions` row (device, IP, user agent) and returns an access + refresh token pair.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginDto' }
+      responses:
+        '200': { $ref: '#/components/responses/TokenPairResponse' }
+        '202':
+          description: Password accepted; a 6-digit OTP was sent (finance roles)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MfaChallengeDto' }
+        '400': { $ref: '#/components/responses/BadRequestError' }        # REQ_VALIDATION_ERROR (not a phone number)
+        '401': { $ref: '#/components/responses/UnauthorizedError' }      # AUTH_CREDENTIALS_INVALID
+        '403': { $ref: '#/components/responses/ForbiddenError' }         # AUTH_ACCOUNT_DISABLED (correct password only)
+        '423': { $ref: '#/components/responses/LockedError' }            # AUTH_ACCOUNT_LOCKED
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }   # SEC_RATE_LIMIT_EXCEEDED
+
+  /auth/login/mfa:
+    post:
+      tags: [Identity & Authentication]
+      summary: Complete a finance-role login with the OTP
+      security: []
+      description: |
+        - The challenge is bound to the user, the device and the IP address that passed the password step.
+        - 5 wrong codes burn the challenge (`429 AUTH_OTP_TOO_MANY_ATTEMPTS`); the user must log in again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VerifyLoginOtpDto' }
+      responses:
+        '200': { $ref: '#/components/responses/TokenPairResponse' }
+        '400': { $ref: '#/components/responses/BadRequestError' }        # AUTH_OTP_INVALID, AUTH_OTP_EXPIRED
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }   # AUTH_OTP_TOO_MANY_ATTEMPTS
+
+  /auth/refresh:
+    post:
+      tags: [Identity & Authentication]
+      summary: Exchange a refresh token for a new token pair (rotation)
+      security: []
+      description: |
+        - The presented refresh token is invalidated and a new one is returned on every call.
+        - Re-using an already-rotated refresh token revokes the whole session (`401 AUTH_REFRESH_TOKEN_REUSED`)
+          and sends a security alert to the account owner — the token is assumed stolen.
+        - Expired (7 days idle / 30 days absolute) or revoked sessions → `401 AUTH_SESSION_REVOKED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshTokenDto' }
+      responses:
+        '200': { $ref: '#/components/responses/TokenPairResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }      # AUTH_TOKEN_INVALID, AUTH_SESSION_REVOKED, AUTH_REFRESH_TOKEN_REUSED
+
+  /auth/otp/request:
+    post:
+      tags: [Identity & Authentication]
+      summary: Send an OTP to activate an account or reset a password
+      security: []
+      description: |
+        - Always answers `202`, whether or not the number has an account in the right state (no enumeration).
+          A code is sent only when the purpose fits (`ACTIVATE_ACCOUNT` → `PENDING_ACTIVATION`,
+          `RESET_PASSWORD` → `ACTIVE`).
+        - Cooldown (60 s) and daily cap (5) apply per number, registered or not → `429 AUTH_OTP_RATE_LIMITED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RequestOtpDto' }
+      responses:
+        '202':
+          description: Accepted. If the number qualifies, an OTP is on its way
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/OtpRequestAcceptedDto' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }   # AUTH_OTP_RATE_LIMITED, SEC_RATE_LIMIT_EXCEEDED
+
+  /auth/activate:
+    post:
+      tags: [Identity & Authentication]
+      summary: Activate an account with the OTP and choose a password (signs the user in)
+      security: []
+      description: |
+        - For tenant accounts created at move-in and staff accounts created by the landlord.
+        - Sets `phone_verified_at`, `status = ACTIVE`, stores the argon2id hash and returns a token pair.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActivateAccountDto' }
+      responses:
+        '200': { $ref: '#/components/responses/TokenPairResponse' }
+        '400': { $ref: '#/components/responses/BadRequestError' }        # AUTH_OTP_INVALID, AUTH_OTP_EXPIRED
+        '422': { description: AUTH_PASSWORD_POLICY_VIOLATION }
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }   # AUTH_OTP_TOO_MANY_ATTEMPTS
+
+  /auth/password/reset:
+    post:
+      tags: [Identity & Authentication]
+      summary: Reset a forgotten password with the OTP
+      security: []
+      description: |
+        - Revokes **every** session of the account and clears the login lock for that number.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordDto' }
+      responses:
+        '204': { description: Password reset; sign in again }
+        '400': { $ref: '#/components/responses/BadRequestError' }        # AUTH_OTP_INVALID, AUTH_OTP_EXPIRED
+        '422': { description: AUTH_PASSWORD_POLICY_VIOLATION }
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }
+
+  /auth/password/change:
+    post:
+      tags: [Identity & Authentication]
+      summary: Change the password of the signed-in user
+      description: |
+        - Requires the current password (a wrong one counts towards the login lock).
+        - Keeps the current session and revokes all the others.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordDto' }
+      responses:
+        '204': { description: Password changed }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }      # AUTH_CREDENTIALS_INVALID
+        '422': { description: AUTH_PASSWORD_POLICY_VIOLATION }
+
+  /auth/logout:
+    post:
+      tags: [Identity & Authentication]
+      summary: Sign out of the current session
+      responses:
+        '204': { description: Session revoked; its access token stops working immediately }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /auth/logout-all:
+    post:
+      tags: [Identity & Authentication]
+      summary: Sign out of every device
+      responses:
+        '204': { description: All sessions of the user revoked }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /auth/me:
+    get:
+      tags: [Identity & Authentication]
+      summary: Who am I — profile, roles, buildings, permissions and (tenants) current room
+      description: |
+        - `residence` is filled for a `TENANT` who currently lives in a room of the active building, else `null`.
+        - The phone number is always masked.
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MeDto' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /auth/sessions:
+    get:
+      tags: [Identity & Authentication]
+      summary: List my active sessions (devices)
+      responses:
+        '200':
+          description: Active sessions, most recently used first; `current` marks the calling session
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/SessionDto' } }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /auth/sessions/{sessionId}:
+    delete:
+      tags: [Identity & Authentication]
+      summary: Sign out one of my devices
+      parameters:
+        - { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Session revoked }
+        '404': { $ref: '#/components/responses/NotFoundError' }          # not one of the caller's sessions
+
+  /users:
+    post:
+      tags: [Identity & Authentication]
+      summary: Create a staff account (landlord only)
+      description: |
+        - `users:manage:global`. Roles `LANDLORD`, `PROPERTY_MANAGER`, `ACCOUNTANT`, `GUARD`; building access limited
+          to the landlord's own buildings. `TENANT` accounts are never created here — they come from occupancy.
+        - The account starts `PENDING_ACTIVATION` and an invitation SMS is sent; the person then requests an
+          `ACTIVATE_ACCOUNT` code (`POST /auth/otp/request`) and chooses a password (`POST /auth/activate`).
+        - A phone number that already has an account → `409 RES_ALREADY_EXISTS` (one account per person).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserDto' }
+      responses:
+        '201':
+          description: Account created and invitation sent
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UserDto' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '409': { $ref: '#/components/responses/ConflictError' }          # RES_ALREADY_EXISTS
+    get:
+      tags: [Identity & Authentication]
+      summary: List accounts with access to the landlord's buildings
+      parameters:
+        - { name: role, in: query, required: false, schema: { type: string, enum: [LANDLORD, PROPERTY_MANAGER, ACCOUNTANT, GUARD, TENANT] } }
+        - { name: status, in: query, required: false, schema: { type: string, enum: [PENDING_ACTIVATION, ACTIVE, DISABLED] } }
+        - { name: buildingId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: Paginated accounts (phone numbers masked)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/UserDto' } }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /users/{id}:
+    patch:
+      tags: [Identity & Authentication]
+      summary: Change a staff account's roles, buildings or status (landlord only)
+      description: |
+        - Evicts `permissions:user:{id}`. Removing a role or building, or `status = DISABLED`, also revokes the user's sessions.
+        - Refused (`409 RES_CONFLICT`) when it would disable or demote the caller, or leave a building without a `LANDLORD`.
+        - A `TENANT` account's room access is driven by occupancy, not by this endpoint.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserDto' }
+      responses:
+        '200':
+          description: Account updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UserDto' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }          # RES_CONFLICT, RES_CONCURRENCY_CONFLICT
+```
 
   \# \===========================================================================
 
@@ -340,6 +670,33 @@ paths:
 
                           \$ref: '\#/components/schemas/VacancySummaryItemDto'
 
+```yaml
+  /properties/rooms/mine:
+    get:
+      tags: [Properties & Room Directory]
+      summary: The room the signed-in tenant currently lives in
+      description: |
+        - `TENANT` (`rooms:read:own`). The room is found from the caller's own active occupancy in the active building
+          (`OCCUPANCY_SELF_SCOPE`), so the app needs no room id.
+        - Same projection as `GET /properties/rooms/{id}`; other occupants appear only as counts.
+        - Declared before `/{id}` so `mine` is never parsed as a UUID.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+      responses:
+        '200':
+          description: The caller's room
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RoomDetailDto' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }         # not a tenant (staff use /{id})
+        '404': { description: 'BIZ_NO_ACTIVE_ROOM — the caller does not live in a room of this building (never moved in, or moved out)' }
+```
+
   /properties/rooms/{id}:
 
     get:
@@ -353,6 +710,14 @@ paths:
         \- \*\*Optimization \#2 (Zero N+1):\*\* Resolves room metadata, room type, active lease contract, primary tenant,
 
           co-occupant headcount, and all assigned rental appliances (\`room\_assets\`) in a single TypeORM query\[cite: 3, 6, 7\].
+
+        \- \*\*Who can open which room:\*\* staff with \`rooms:read:department\` can open any room of the active building.
+
+          A \`TENANT\` (\`rooms:read:own\`) can open only the room they currently live in: the room is
+
+          accessible only when their linked person profile is an \`ACTIVE\` occupant of the room's \`ACTIVE\` contract (\`RoomAccessGuard\`).
+
+          Any other room, or the same room after moving out, returns \`403 AUTH\_FORBIDDEN\_RESOURCE\`.
 
       parameters:
 
@@ -391,6 +756,8 @@ paths:
                       data:
 
                         \$ref: '\#/components/schemas/RoomDetailDto'
+
+        '403': { $ref: '#/components/responses/ForbiddenError' }   # TENANT opening a room they do not live in
 
         '404':
 
@@ -1345,7 +1712,7 @@ components:
 
       bearerFormat: JWT
 
-      description: JWT Access Token containing userId, buildingId, roles, and flattened CASL rules\[cite: 2, 4\]
+      description: 15-minute JWT access token from POST /auth/login (claims sub, sid, phoneMasked, buildingId, buildingIds, roles); tokens of a revoked session are rejected with AUTH_SESSION_REVOKED
 
     WebhookHmacAuth:
 
@@ -1596,6 +1963,167 @@ components:
         customMonthlyFee: { type: number, minimum: 0, example: 300000 }
 
 ```yaml
+    LoginDto:
+      type: object
+      required: [phone, password]
+      properties:
+        phone: { type: string, maxLength: 20, example: "0901 234 567", description: "Vietnamese or E.164 number, normalised to +84901234567" }
+        password: { type: string, format: password, minLength: 1, maxLength: 128 }
+        deviceId: { type: string, maxLength: 100, example: "ios-7F3A2C" }
+        deviceName: { type: string, maxLength: 150, example: "iPhone 15" }
+
+    VerifyLoginOtpDto:
+      type: object
+      required: [challengeId, code]
+      properties:
+        challengeId: { type: string, format: uuid }
+        code: { type: string, pattern: '^[0-9]{6}$', example: "482913" }
+        deviceId: { type: string, maxLength: 100, description: Same deviceId as sent to POST /auth/login }
+
+    RefreshTokenDto:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string, example: "3f0c9a52-6f1e-4d0b-9a77-1c2d3e4f5a6b.r7Hq…" }
+
+    RequestOtpDto:
+      type: object
+      required: [phone, purpose]
+      properties:
+        phone: { type: string, maxLength: 20, example: "0901234567" }
+        purpose: { type: string, enum: [ACTIVATE_ACCOUNT, RESET_PASSWORD] }
+
+    OtpRequestAcceptedDto:
+      type: object
+      properties:
+        expiresInSeconds: { type: integer, example: 300 }
+        resendAfterSeconds: { type: integer, example: 60 }
+        debugCode: { type: string, description: Only when AUTH_OTP_DEBUG_ECHO=true (local / test) and a code was really sent }
+
+    ActivateAccountDto:
+      type: object
+      required: [phone, code, newPassword]
+      properties:
+        phone: { type: string, maxLength: 20, example: "0901234567" }
+        code: { type: string, pattern: '^[0-9]{6}$' }
+        newPassword: { type: string, format: password, minLength: 10, maxLength: 128 }
+        deviceId: { type: string, maxLength: 100 }
+        deviceName: { type: string, maxLength: 150 }
+
+    ResetPasswordDto:
+      type: object
+      required: [phone, code, newPassword]
+      properties:
+        phone: { type: string, maxLength: 20 }
+        code: { type: string, pattern: '^[0-9]{6}$' }
+        newPassword: { type: string, format: password, minLength: 10, maxLength: 128 }
+
+    ChangePasswordDto:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, format: password, maxLength: 128 }
+        newPassword: { type: string, format: password, minLength: 10, maxLength: 128 }
+
+    TokenPairDto:
+      type: object
+      properties:
+        tokenType: { type: string, enum: [Bearer] }
+        accessToken: { type: string, description: "JWT, 15 minutes" }
+        accessTokenExpiresIn: { type: integer, example: 900 }
+        refreshToken: { type: string, description: "Opaque, single use (rotated on every refresh)" }
+        refreshTokenExpiresAt: { type: string, format: date-time, description: Idle expiry; never later than the absolute expiry }
+        sessionId: { type: string, format: uuid }
+        user:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            fullName: { type: string, example: "Nguyễn Văn A" }
+            phoneMasked: { type: string, example: "090****567" }
+            roles: { type: array, items: { type: string }, example: [TENANT] }
+            buildingIds: { type: array, items: { type: string, format: uuid } }
+
+    MfaChallengeDto:
+      type: object
+      properties:
+        mfaRequired: { type: boolean, example: true }
+        challengeId: { type: string, format: uuid }
+        otpSentTo: { type: string, example: "090****567" }
+        channel: { type: string, enum: [ZALO, SMS] }
+        expiresInSeconds: { type: integer, example: 300 }
+        debugCode: { type: string, description: Only when AUTH_OTP_DEBUG_ECHO=true (local / test) }
+
+    MeDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string }
+        phoneMasked: { type: string, example: "090****567" }
+        status: { type: string, enum: [PENDING_ACTIVATION, ACTIVE, DISABLED] }
+        roles: { type: array, items: { type: string } }
+        activeBuildingId: { type: string, format: uuid, nullable: true }
+        buildings:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string, example: "Tòa nhà Sunrise" }
+        permissions: { type: array, items: { type: string }, example: ["rooms:read:own", "invoices:read:own"] }
+        residence:
+          type: object
+          nullable: true
+          description: Only for a TENANT who currently lives in a room of the active building
+          properties:
+            tenantId: { type: string, format: uuid }
+            contractId: { type: string, format: uuid }
+            roomId: { type: string, format: uuid }
+            roomNumber: { type: string, example: "P.302" }
+            occupantRole: { type: string, enum: [PRIMARY_HOLDER, CO_OCCUPANT] }
+
+    SessionDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        deviceName: { type: string, nullable: true, example: "iPhone 15" }
+        ipAddress: { type: string, example: "113.161.45.10" }
+        userAgent: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: string, format: date-time }
+        current: { type: boolean }
+
+    CreateUserDto:
+      type: object
+      required: [phone, fullName, roles, buildingIds]
+      properties:
+        phone: { type: string, maxLength: 20, example: "0912345678" }
+        fullName: { type: string, maxLength: 150, example: "Trần Thị B" }
+        roles: { type: array, minItems: 1, items: { type: string, enum: [LANDLORD, PROPERTY_MANAGER, ACCOUNTANT, GUARD] } }
+        buildingIds: { type: array, minItems: 1, items: { type: string, format: uuid } }
+
+    UpdateUserDto:
+      type: object
+      minProperties: 1
+      properties:
+        fullName: { type: string, maxLength: 150 }
+        roles: { type: array, minItems: 1, items: { type: string, enum: [LANDLORD, PROPERTY_MANAGER, ACCOUNTANT, GUARD] } }
+        buildingIds: { type: array, minItems: 1, items: { type: string, format: uuid } }
+        status: { type: string, enum: [ACTIVE, DISABLED] }
+        version: { type: integer, description: Optimistic lock (users.version) }
+
+    UserDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string }
+        phoneMasked: { type: string, example: "091****678" }
+        status: { type: string, enum: [PENDING_ACTIVATION, ACTIVE, DISABLED] }
+        roles: { type: array, items: { type: string } }
+        buildingIds: { type: array, items: { type: string, format: uuid } }
+        lastLoginAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        version: { type: integer }
+
     CreateTenantDto:
       type: object
       description: One profile per PERSON (contract holder, roommate or child). Register every occupant.
@@ -1985,6 +2513,42 @@ components:
           schema:
 
             \$ref: '\#/components/schemas/Rfc7807ErrorEnvelope'
+
+
+```yaml
+    ForbiddenError:
+      description: Authenticated but not allowed (AUTH_FORBIDDEN_RESOURCE, AUTH_TENANT_MISMATCH, AUTH_ACCOUNT_DISABLED, RLS 42501)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Rfc7807ErrorEnvelope' }
+
+    LockedError:
+      description: Too many wrong passwords for this phone number (AUTH_ACCOUNT_LOCKED); see Retry-After
+      headers:
+        Retry-After: { schema: { type: integer }, description: Seconds until the lock ends }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Rfc7807ErrorEnvelope' }
+
+    TooManyRequestsError:
+      description: Rate or OTP limit reached (SEC_RATE_LIMIT_EXCEEDED, AUTH_OTP_RATE_LIMITED, AUTH_OTP_TOO_MANY_ATTEMPTS)
+      headers:
+        Retry-After: { schema: { type: integer }, description: Seconds to wait }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Rfc7807ErrorEnvelope' }
+
+    TokenPairResponse:
+      description: Signed in; access + refresh token pair
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/StandardSuccessEnvelope'
+              - type: object
+                properties:
+                  data: { $ref: '#/components/schemas/TokenPairDto' }
+```
 
 ---
 

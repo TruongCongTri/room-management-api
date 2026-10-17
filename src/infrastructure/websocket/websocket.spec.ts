@@ -11,7 +11,7 @@ describe('RealtimeWebSocketModule (Enterprise Socket.io Suite)', () => {
 
   const verifiedUser: RequestUserContext = {
     id: 'usr_ws_1',
-    email: 'pilot@landlord.com',
+    phoneMasked: '090****567',
     tenantId: '22222222-2222-4222-8222-222222222222',
     roles: [],
     rules: [],

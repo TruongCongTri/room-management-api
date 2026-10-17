@@ -29,7 +29,7 @@ describe('AppLoggerService (Unit Test)', () => {
         startTime: Date.now(),
         user: {
           id: 'usr_buyer_99',
-          email: 'buyer@rental.vn',
+          phoneMasked: '090****567',
           tenantId: 'tenant_vietnam',
           departmentId: 'dep_SALES',
           roles: ['CUSTOMER'],

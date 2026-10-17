@@ -40,7 +40,7 @@ export class AuditWriterService {
     return {
       buildingId: payload.explicitBuildingId || this.contextService.getBuildingId() || user?.tenantId || null,
       actorId: payload.explicitActorId || user?.id || 'SYSTEM_INTERNAL',
-      actorEmail: user?.email ?? null,
+      actorLabel: user?.phoneMasked ?? null,
       departmentId: user?.departmentId ?? null,
       action: payload.action,
       resource: payload.resource,

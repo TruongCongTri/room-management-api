@@ -35,7 +35,7 @@ describe('MultiTenancyModule (RLS & TypeORM Tenancy Isolation)', () => {
 
   const userOf = (tenantId: string, roles: string[] = ['PROPERTY_MANAGER']): RequestUserContext => ({
     id: 'usr_1',
-    email: 'manager@rental.vn',
+    phoneMasked: '090****567',
     tenantId,
     roles,
     rules: [],

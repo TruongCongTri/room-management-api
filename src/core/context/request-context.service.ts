@@ -72,7 +72,6 @@ export class RequestContextService {
         isBackgroundJob: true,
         user: {
           id: SYSTEM_USER_ID,
-          email: 'system@internal.engine',
           tenantId,
           roles: [SYSTEM_ROLE],
           rules: [],
@@ -134,8 +133,8 @@ export class RequestContextService {
     return this.getStore()?.user?.id;
   }
 
-  getUserEmail(): string | undefined {
-    return this.getStore()?.user?.email;
+  getUserPhoneMasked(): string | undefined {
+    return this.getStore()?.user?.phoneMasked;
   }
 
   /**

@@ -7,6 +7,14 @@ export const ko: Record<string, string> = {
   AUTH_TENANT_MISMATCH: '계정이 요청한 조직에 속하지 않습니다.',
   AUTH_CREDENTIALS_INVALID: '로그인 정보가 올바르지 않습니다.',
   AUTH_SESSION_REVOKED: '이 세션은 철회되었습니다.',
+  AUTH_ACCOUNT_LOCKED: '비밀번호를 여러 번 잘못 입력하여 이 전화번호가 일시적으로 잠겼습니다. {{retryAfter}}초 후에 다시 시도하세요.',
+  AUTH_ACCOUNT_DISABLED: '계정이 비활성화되었습니다. 건물 관리자에게 문의하세요.',
+  AUTH_OTP_INVALID: '인증 코드가 올바르지 않습니다.',
+  AUTH_OTP_EXPIRED: '인증 코드가 만료되었거나 이미 사용되었습니다. 새 코드를 요청하세요.',
+  AUTH_OTP_TOO_MANY_ATTEMPTS: '인증 코드를 너무 많이 잘못 입력했습니다. 새 코드를 요청하세요.',
+  AUTH_OTP_RATE_LIMITED: '인증 코드 요청이 너무 많습니다. {{retryAfter}}초 후에 다시 시도하세요.',
+  AUTH_REFRESH_TOKEN_REUSED: '로그인 토큰의 비정상적인 재사용이 감지되었습니다. 세션이 철회되었으니 다시 로그인하세요.',
+  AUTH_PASSWORD_POLICY_VIOLATION: '비밀번호가 충분히 안전하지 않습니다.',
 
   // 입력 데이터
   REQ_VALIDATION_ERROR: '전송된 데이터가 유효하지 않습니다.',
@@ -44,6 +52,7 @@ export const ko: Record<string, string> = {
   BIZ_LAST_OCCUPANT_REQUIRES_CHECKOUT: '명의자가 마지막 거주자입니다. 퇴실 및 보증금 정산을 진행해 주세요.',
   BIZ_TENANT_ID_CARD_DUPLICATE: '이 신분증/여권 번호는 이미 다른 임차인에게 등록되어 있습니다.',
   BIZ_PDPL_CONSENT_REQUIRED: '임차인은 개인정보 처리 약관에 동의해야 합니다(법률 91/2025/QH15).',
+  BIZ_NO_ACTIVE_ROOM: '현재 이 건물의 어떤 방에도 거주하고 있지 않습니다.',
   BIZ_METER_READING_DECREASED: '새 계량기 값이 이전 값보다 작습니다. 계량기를 교체했거나 한 바퀴 돌았다면 리셋으로 표시해 주세요.',
   BIZ_METER_READING_DUPLICATE: '이 방은 이번 기간의 계량기 값이 이미 등록되었습니다.',
   BIZ_METER_PHOTO_REQUIRED: '계량기 값을 등록하기 전에 전기·수도 계량기 사진이 필요합니다.',

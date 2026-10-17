@@ -7,6 +7,14 @@ export const en: Record<string, string> = {
   AUTH_TENANT_MISMATCH: 'Your account does not belong to the requested organization.',
   AUTH_CREDENTIALS_INVALID: 'Incorrect sign-in credentials.',
   AUTH_SESSION_REVOKED: 'This session has been revoked.',
+  AUTH_ACCOUNT_LOCKED: 'This phone number is temporarily locked after too many wrong passwords. Please retry in {{retryAfter}} seconds.',
+  AUTH_ACCOUNT_DISABLED: 'This account has been disabled. Please contact the building management.',
+  AUTH_OTP_INVALID: 'The verification code is incorrect.',
+  AUTH_OTP_EXPIRED: 'The verification code has expired or was already used. Please request a new one.',
+  AUTH_OTP_TOO_MANY_ATTEMPTS: 'Too many wrong verification codes. Please request a new one.',
+  AUTH_OTP_RATE_LIMITED: 'Too many verification codes requested. Please retry in {{retryAfter}} seconds.',
+  AUTH_REFRESH_TOKEN_REUSED: 'Suspicious reuse of a sign-in token was detected. The session was revoked; please sign in again.',
+  AUTH_PASSWORD_POLICY_VIOLATION: 'The password is not strong enough.',
 
   // Request input
   REQ_VALIDATION_ERROR: 'The submitted data is invalid.',
@@ -44,6 +52,7 @@ export const en: Record<string, string> = {
   BIZ_LAST_OCCUPANT_REQUIRES_CHECKOUT: 'The contract holder is the last occupant: please perform a checkout and deposit settlement.',
   BIZ_TENANT_ID_CARD_DUPLICATE: 'This citizen ID / passport is already registered to another tenant.',
   BIZ_PDPL_CONSENT_REQUIRED: 'The tenant must accept the personal data processing terms (Law 91/2025/QH15).',
+  BIZ_NO_ACTIVE_ROOM: 'You do not currently live in a room of this building.',
   BIZ_METER_READING_DECREASED: 'The new reading is lower than the previous one. Mark the meter as reset if it was replaced or rolled over.',
   BIZ_METER_READING_DUPLICATE: 'This room already has a reading for the period.',
   BIZ_METER_PHOTO_REQUIRED: 'Electricity and water meter photos are required before submitting readings.',

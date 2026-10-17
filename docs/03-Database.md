@@ -10,6 +10,14 @@ This document defines the normalized **PostgreSQL + TypeORM** schema of the 80-r
 
 ```
 +------------------------------------------------------------------------------------------------+
+| 0. IDENTITY & ACCESS (4, global — no RLS: sign-in happens before a building is chosen)         |
+|  [users] (login = phone_e164) 1 ── * [user_roles] * ── 1 [system_roles]                        |
+|          1 ── * [user_building_access] * ── 1 [buildings]                                      |
+|          1 ── * [auth_sessions]   refresh-token rotation, revocation                           |
+|          1 ── * [tenants.user_id] a TENANT login ↔ their person profile (one per building)     |
++------------------------------------------------------------------------------------------------+
+                                            │
++------------------------------------------------------------------------------------------------+
 | 1. PROPERTY & ASSET TOPOLOGY (5)                                                               |
 |  [buildings] 1 ── * [rooms] * ── 1 [room_types]            rooms.max_occupants = capacity        |
 |                        └── 1 ── * [room_assets] * ── 1 [assets]                                 |
@@ -80,6 +88,198 @@ export abstract class BuildingScopedEntity extends EnterpriseBaseEntity {
 ## 3\. TypeORM Entity Specifications
 
 > **Precision Note:** PostgreSQL `numeric(12, 2)` columns are typed as `string` in TypeORM entities to prevent JavaScript IEEE-754 floating-point precision loss before passing values into `decimal.js`.
+
+### 3.0 Bounded Context 0: Identity & Access (global tables, no RLS)
+
+Sign-in happens **before** a building is chosen, so these tables are global (no `building_id`, no RLS). Access to them is enforced by `IdentityModule`: users, roles and sessions are only reachable through `/auth/*` (the caller's own rows) and `/users` (`LANDLORD`, limited to people who share one of the landlord's buildings).
+
+* **Login identifier = phone number** in E.164 (`+84901234567`), unique among live accounts. Email is not used for sign-in.
+* **One account per person.** A tenant who also works as a guard has one account with both roles.
+* **Roles are per account** and apply in every building listed in `user_building_access`; the access token carries those buildings as `buildingIds` (switch with `X-Building-ID`).
+* **Tenant link:** a `TENANT` account points to the person's profile through `tenants.user_id` (one profile per building). Which room the tenant may open is derived from their **active occupancy**, never stored on the account.
+* Short-lived state — OTP codes, login lock counters, revoked-session markers — lives in Redis (table at the end of this section), not in PostgreSQL.
+
+#### I-1. `User` (`users`)
+
+```ts
+// src/modules/identity/entities/user.entity.ts
+export enum UserStatus {
+  PENDING_ACTIVATION = 'PENDING_ACTIVATION', // created by the landlord or at move-in; no password yet
+  ACTIVE = 'ACTIVE',
+  DISABLED = 'DISABLED', // by the landlord; all sessions revoked
+}
+
+@Entity('users')
+export class User extends EnterpriseBaseEntity {
+  // E.164, normalised by PhoneNumber.normalize(); unique among live rows (idx_users_phone_unique, section 4)
+  @Column({ type: 'varchar', length: 16 })
+  phoneE164: string;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  phoneVerifiedAt?: Date | null; // set by the first successful OTP (activation)
+
+  @Column({ type: 'varchar', length: 150 })
+  fullName: string;
+
+  // argon2id ($argon2id$v=19$m=19456,t=2,p=1$...). Never selected unless asked for explicitly.
+  @Column({ type: 'varchar', length: 255, nullable: true, select: false })
+  passwordHash?: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  passwordChangedAt?: Date | null;
+
+  @Column({ type: 'enum', enum: UserStatus, default: UserStatus.PENDING_ACTIVATION })
+  status: UserStatus;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lastLoginAt?: Date | null;
+
+  @Column({ type: 'varchar', length: 10, default: 'vi-VN' })
+  preferredLocale: string; // OTP and security-alert language
+
+  @OneToMany(() => UserRole, (r) => r.user)
+  roles: UserRole[];
+
+  @OneToMany(() => UserBuildingAccess, (a) => a.user)
+  buildingAccess: UserBuildingAccess[];
+}
+```
+
+#### I-2. `UserRole` (`user_roles`)
+
+```ts
+// src/modules/identity/entities/user-role.entity.ts
+@Entity('user_roles')
+export class UserRole {
+  @PrimaryColumn({ type: 'uuid' })
+  userId: string;
+
+  @PrimaryColumn({ type: 'varchar', length: 50 })
+  roleCode: string; // FK system_roles.code — LANDLORD | PROPERTY_MANAGER | ACCOUNTANT | GUARD | TENANT
+
+  @Column({ type: 'uuid', nullable: true })
+  grantedBy?: string | null; // null = system (tenant provisioning)
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  createdAt: Date;
+
+  @ManyToOne(() => User, (u) => u.roles, { onDelete: 'CASCADE' })
+  user: User;
+}
+```
+
+#### I-3. `UserBuildingAccess` (`user_building_access`)
+
+```ts
+// src/modules/identity/entities/user-building-access.entity.ts
+@Entity('user_building_access')
+@Index('idx_user_building_access_building', ['buildingId'])
+export class UserBuildingAccess {
+  @PrimaryColumn({ type: 'uuid' })
+  userId: string;
+
+  @PrimaryColumn({ type: 'uuid' })
+  buildingId: string; // FK buildings.id
+
+  @Column({ type: 'uuid', nullable: true })
+  grantedBy?: string | null;
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  createdAt: Date;
+
+  @ManyToOne(() => User, (u) => u.buildingAccess, { onDelete: 'CASCADE' })
+  user: User;
+}
+```
+
+#### I-4. `AuthSession` (`auth_sessions`)
+
+One row per signed-in device. The refresh token is `<sessionId>.<secret>`; only `HMAC-SHA256(secret, JWT_REFRESH_SECRET)` is stored, so a copy of this table alone cannot be used to forge tokens. On every refresh the hash is replaced and the old one moved to `previous_refresh_token_hash`: if that old token is ever presented again, the session is revoked with `ROTATION_REUSE_DETECTED`.
+
+```ts
+// src/modules/identity/entities/auth-session.entity.ts
+export enum SessionRevokedReason {
+  LOGOUT = 'LOGOUT',
+  LOGOUT_ALL = 'LOGOUT_ALL',
+  ROTATION_REUSE_DETECTED = 'ROTATION_REUSE_DETECTED',
+  PASSWORD_CHANGED = 'PASSWORD_CHANGED',
+  PASSWORD_RESET = 'PASSWORD_RESET',
+  ACCESS_REDUCED = 'ACCESS_REDUCED', // role or building removed by the landlord
+  ACCOUNT_DISABLED = 'ACCOUNT_DISABLED',
+  REVOKED_BY_USER = 'REVOKED_BY_USER', // DELETE /auth/sessions/{id}
+}
+
+@Entity('auth_sessions')
+@Index('idx_auth_sessions_user_active', ['userId', 'lastUsedAt'], { where: '"revoked_at" IS NULL' })
+export class AuthSession {
+  @PrimaryGeneratedColumn('uuid')
+  id: string; // = `sid` claim of every access token of this session
+
+  @Column({ type: 'uuid' })
+  userId: string;
+
+  @Column({ type: 'char', length: 64 })
+  refreshTokenHash: string;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  previousRefreshTokenHash?: string | null;
+
+  @Column({ type: 'int', default: 0 })
+  rotationCount: number;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  deviceId?: string | null;
+
+  @Column({ type: 'varchar', length: 150, nullable: true })
+  deviceName?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  userAgent?: string | null;
+
+  @Column({ type: 'varchar', length: 45 })
+  ipAddress: string; // last IP that used the session
+
+  @Column({ type: 'timestamptz', nullable: true })
+  mfaVerifiedAt?: Date | null; // finance roles: when the OTP step was passed
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  createdAt: Date;
+
+  @Column({ type: 'timestamptz' })
+  lastUsedAt: Date;
+
+  @Column({ type: 'timestamptz' })
+  idleExpiresAt: Date; // lastUsedAt + AUTH_REFRESH_IDLE_DAYS (7)
+
+  @Column({ type: 'timestamptz' })
+  absoluteExpiresAt: Date; // createdAt + AUTH_REFRESH_ABSOLUTE_DAYS (30), never extended
+
+  @Column({ type: 'timestamptz', nullable: true })
+  revokedAt?: Date | null;
+
+  @Column({ type: 'enum', enum: SessionRevokedReason, nullable: true })
+  revokedReason?: SessionRevokedReason | null;
+
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  user: User;
+}
+```
+
+#### I-5. Short-lived identity state in Redis
+
+`phoneKey` = `HMAC-SHA256(phoneE164, BLIND_INDEX_PEPPER)` (`EncryptionService.computeBlindIndex`), so raw phone numbers never appear in Redis keys.
+
+| Key | Value | TTL | Purpose |
+| :-- | :-- | :-- | :-- |
+| `otp:ACTIVATE_ACCOUNT:{phoneKey}`, `otp:RESET_PASSWORD:{phoneKey}` | `{ challengeId, codeHash, userId }` | 300 s | Current activation / reset code (body carries the phone); a new code replaces the old one |
+| `otp:LOGIN_MFA:{challengeId}` | `{ challengeId, codeHash, userId, deviceId, deviceName, ip }` | 300 s | Login second factor (body carries only the challenge id); bound to the device and IP of the password step |
+| `otp:attempts:{challengeId}` | counter | 300 s | Wrong codes; the 5th burns the challenge |
+| `otp:cooldown:{phoneKey}` | `1` | 60 s | Resend cooldown, set for unknown numbers too |
+| `otp:daily:{purpose}:{phoneKey}:{yyyymmdd}` | counter | until end of day (VN time) | Max 5 activation / reset codes and 20 login codes per number per day |
+| `auth:login-fail:{phoneKey}` | counter | 900 s | Wrong passwords within the window (unknown numbers included) |
+| `auth:lock:{phoneKey}` | `{ until, level }` | lock length | Lock after 5 failures: 15 min, doubling per level up to 24 h (`auth:lock-level:{phoneKey}`); the level resets 24 h after the last lock **ended** |
+| `auth:revoked-sid:{sid}` | `1` | access-token lifetime (900 s) | Checked by `JwtTokenService.verifyAccessToken()` → `401 AUTH_SESSION_REVOKED` |
+| `auth:self-scope:{buildingId}:{userId}` | `{ tenantId, contractId, roomId, occupantRole }` or `none` | 300 s | Cached result of `OCCUPANCY_SELF_SCOPE` (the tenant's current room); evicted on `occupant.moved_in`, `occupant.moved_out`, `contract.primary_holder_changed` and checkout |
 
 ### 3.1 Bounded Context 1: Property & Asset Topology
 
@@ -468,6 +668,7 @@ Every person living in a room has a profile, **including roommates and children*
 * **ID document is mandatory for everyone:** CCCD (*Thẻ căn cước*) for adults; for children without a card, the 12-digit **personal identification number** (*số định danh cá nhân*, same format as the CCCD number); passport for foreigners (`id_document_type = PASSPORT`, declared through the foreigner temporary-residence channel instead of CT01).
 * **Consent:** every person's data needs verifiable consent; for a child it is recorded through a parent / guardian (`consent_guardian_tenant_id`, Decree 13/2023/NĐ-CP, Art. 20).
 * A person is unique per building by `(building_id, id_card_hash)`; moving between rooms reuses the same profile.
+* **Login link (`user_id`):** when an **adult occupant with a phone number** moves in, `TenantAccountProvisioningService` finds the account with the same normalised phone number or creates one (`PENDING_ACTIVATION`, role `TENANT`, access to this building) and stores its id here. Children and people without a phone have no login. One account per profile per building (`idx_tenants_bld_user_unique`).
 
 ```ts
 // src/modules/tenants/entities/tenant.entity.ts
@@ -540,6 +741,10 @@ export class Tenant extends BuildingScopedEntity {
 
   @Column({ type: 'uuid', nullable: true })
   consentGuardianTenantId?: string | null;
+
+  // TENANT login of this person (users.id); null for children / no phone. Room access comes from occupancy.
+  @Column({ type: 'uuid', nullable: true })
+  userId?: string | null;
 
   @OneToMany(() => ContractOccupant, (co) => co.tenant)
   occupancies: ContractOccupant[];
@@ -1357,7 +1562,7 @@ export class AuditLogEntity {
   @PrimaryGeneratedColumn('uuid') id: string;
   @Column({ type: 'uuid', name: 'building_id', nullable: true }) buildingId?: string | null;
   @Column({ type: 'varchar', length: 100 }) actorId: string;
-  @Column({ type: 'varchar', length: 255, nullable: true }) actorEmail?: string | null;
+  @Column({ type: 'varchar', length: 255, nullable: true }) actorLabel?: string | null; // masked phone (090****567)
   @Column({ type: 'varchar', length: 100, nullable: true }) departmentId?: string | null;
   @Column({ type: 'enum', enum: AuditAction }) action: AuditAction; // CREATE | UPDATE | DELETE | RESTORE | EXECUTE
   @Column({ type: 'varchar', length: 255 }) resource: string; // "contracts", "contract_occupants", …
@@ -1401,7 +1606,7 @@ Created by `1792250000000-CreateReferenceDataTables`, filled by `npm run db:seed
 
 | Table | Key columns | Content |
 | :-- | :-- | :-- |
-| `system_roles` | `code` PK, `name`, `description`, `is_system` | `LANDLORD`, `PROPERTY_MANAGER`, `ACCOUNTANT`, `GUARD`, `TENANT` |
+| `system_roles` | `code` PK, `name`, `description`, `is_system` | `LANDLORD`, `PROPERTY_MANAGER`, `ACCOUNTANT`, `GUARD`, `TENANT` (referenced by `user_roles.role_code`) |
 | `role_permissions` | `role_code` FK, `resource`, `action`, `scope`, `effect` (unique together) | Default matrix, kept in sync with code (stale grants removed) |
 | `evn_tariff_tiers` | `effective_from`, `tier` 1–6 (unique together), `width_kwh`, `price_vnd`, `legal_basis` | Residential tiers, one set per effective date |
 | `statutory_tax_rules` | `code` PK, `effective_from/to`, `exempt_threshold_vnd`, `vat_rate_percent`, `pit_rate_percent`, `pit_base` (`TOTAL_REVENUE` \| `EXCESS_OVER_THRESHOLD`), `business_license_fee_vnd` | `RENTAL_PRE_2026`, `RENTAL_2026` |
@@ -1510,9 +1715,35 @@ SELECT setup_building_rls(t) FROM unnest(ARRAY[
   'contracts', 'contract_occupants', 'contract_holder_transfers', 'tenant_vehicles', 'deposit_ledgers',
   'meter_readings', 'invoices', 'payment_transactions', 'checkout_settlements', 'pccc_compliance_logs'
 ]) AS t;
+
+-- ============================================================================
+-- 6. IDENTITY (global tables — no RLS, see 3.0)
+-- ============================================================================
+-- One live account per phone number; a soft-deleted account frees the number
+CREATE UNIQUE INDEX idx_users_phone_unique ON users (phone_e164) WHERE deleted_at IS NULL;
+
+-- A person profile links to at most one login, and a login to at most one profile per building
+CREATE UNIQUE INDEX idx_tenants_bld_user_unique
+  ON tenants (building_id, user_id) WHERE user_id IS NOT NULL AND deleted_at IS NULL;
+
+ALTER TABLE users
+  ADD CONSTRAINT chk_users_phone_e164 CHECK (phone_e164 ~ '^\+[1-9][0-9]{7,14}$'),
+  ADD CONSTRAINT chk_users_active_has_password CHECK (status <> 'ACTIVE' OR password_hash IS NOT NULL);
+
+ALTER TABLE user_roles
+  ADD CONSTRAINT fk_user_roles_role FOREIGN KEY (role_code) REFERENCES system_roles (code);
+
+ALTER TABLE user_building_access
+  ADD CONSTRAINT fk_user_building_access_building FOREIGN KEY (building_id) REFERENCES buildings (id);
+
+ALTER TABLE auth_sessions
+  ADD CONSTRAINT chk_sessions_expiry CHECK (absolute_expires_at > created_at AND idle_expires_at <= absolute_expires_at),
+  ADD CONSTRAINT chk_sessions_revocation CHECK ((revoked_at IS NULL) = (revoked_reason IS NULL));
 ```
 
 `23514` from the consistency trigger is translated to `400 DB_CHECK_CONSTRAINT_VIOLATION` by `AllExceptionsFilter`; RLS violations (`42501`) to `403`.
+
+The identity tables are created by the Identity migration (module 0) — before `buildings` exists, so `fk_user_building_access_building` is added by the Properties migration (module 1). Vietnamese mobile prefixes are validated in the application (`PhoneNumber.normalize()`); the database only enforces the general E.164 shape so foreign tenants' numbers are accepted.
 
 ---
 

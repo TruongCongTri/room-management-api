@@ -1,0 +1,2379 @@
+{
+  "info": {
+    "_postman_id": "f0cd7345-68af-53a7-ba0d-8648d11e90de",
+    "name": "Room Management API",
+    "description": "Live checks of the API as a client sees it (docs 04 & 06). Run the folders in order.\n\nLocal prerequisites: `npm run migration:run:local && npm run db:seed` (dev accounts, password `RentalDev@2026`), `.env.local` with `AUTH_OTP_DEBUG_ECHO=true` and `THROTTLE_SENSITIVE_LIMIT=100`, app on port 5000.\nRe-run: `npm run db:seed` resets the dev accounts; wait 60 s (OTP cooldown of the landlord) between runs.\nCLI: `npx newman run postman/room-management.postman_collection.json -e postman/local.postman_environment.json`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Identity & Authentication",
+      "item": [
+        {
+          "name": "01 Login - property manager (0901 000 002 format)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0901 000 002\",\n  \"password\": \"{{password}}\",\n  \"deviceId\": \"postman-pm\",\n  \"deviceName\": \"Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 token pair', () => pm.response.to.have.status(200));",
+                  "const d = json.data;",
+                  "pm.test('envelope + token pair shape', () => {",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(d.tokenType).to.eql('Bearer');",
+                  "  pm.expect(d.accessTokenExpiresIn).to.eql(900);",
+                  "  pm.expect(d.refreshToken).to.match(new RegExp('^' + d.sessionId + '\\\\.[A-Za-z0-9_-]{43}$'));",
+                  "  pm.expect(d.user.roles).to.eql(['PROPERTY_MANAGER']);",
+                  "  pm.expect(d.user.phoneMasked).to.eql('090****002');",
+                  "});",
+                  "pm.test('claims: sid + masked phone, never the raw phone', () => {",
+                  "  const c = decodeJwt(d.accessToken);",
+                  "  pm.expect(c.sid).to.eql(d.sessionId);",
+                  "  pm.expect(c.typ).to.eql('access');",
+                  "  pm.expect(c.buildingId).to.eql(pm.environment.get('buildingA'));",
+                  "  pm.expect(JSON.stringify(c)).to.not.include('901000002');",
+                  "});",
+                  "pm.environment.set('pmAccessToken', d.accessToken);",
+                  "pm.environment.set('pmRefreshToken', d.refreshToken);",
+                  "pm.environment.set('pmSessionId', d.sessionId);",
+                  "pm.environment.set('pmUserId', d.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 Login - same account typed as +84",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+84 90 100 0002\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 same user', () => { pm.response.to.have.status(200); pm.expect(json.data.user.id).to.eql(pm.environment.get('pmUserId')); });",
+                  "pm.environment.set('pmSecondAccessToken', json.data.accessToken);",
+                  "pm.environment.set('pmSecondSessionId', json.data.sessionId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 Login - wrong password → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{pmPhone}}\",\n  \"password\": \"Wrong-password-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(401, 'AUTH_CREDENTIALS_INVALID');",
+                  "pm.environment.set('invalidCredentialsMessage', json.message);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 Login - unknown number → same 401 (no enumeration)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0919 999 998\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(401, 'AUTH_CREDENTIALS_INVALID');",
+                  "pm.test('identical message to a wrong password', () => pm.expect(json.message).to.eql(pm.environment.get('invalidCredentialsMessage')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 Login - landline number → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"028 3822 1234\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(400, 'REQ_VALIDATION_ERROR');",
+                  "pm.test('details point at phone', () => pm.expect(json.details[0].field).to.eql('phone'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06 Login - unknown field → 400 (mass assignment blocked)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{pmPhone}}\",\n  \"password\": \"{{password}}\",\n  \"roles\": [\n    \"LANDLORD\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(400, 'REQ_VALIDATION_ERROR');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07 Lockout - 5 wrong passwords on one number → 423 + Retry-After",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Repeats itself 5 times on a random unregistered number: unknown numbers are locked like real ones.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{lockPhone}}\",\n  \"password\": \"Wrong-password-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('lockAttempt')) {",
+                  "  pm.environment.set('lockPhone', '091' + Math.floor(1000000 + Math.random() * 8999999));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "const attempt = Number(pm.environment.get('lockAttempt') || 1);",
+                  "if (attempt < 5) {",
+                  "  pm.test(`attempt ${attempt}: 401`, () => pm.response.to.have.status(401));",
+                  "  pm.environment.set('lockAttempt', attempt + 1);",
+                  "  pm.execution.setNextRequest('07 Lockout - 5 wrong passwords on one number → 423 + Retry-After');",
+                  "} else {",
+                  "  expectError(423, 'AUTH_ACCOUNT_LOCKED');",
+                  "  pm.test('Retry-After = 900 s', () => pm.expect(Number(pm.response.headers.get('Retry-After'))).to.eql(900));",
+                  "  pm.environment.unset('lockAttempt');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "08 Me - property manager",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 profile', () => pm.response.to.have.status(200));",
+                  "pm.test('masked phone, roles, building, permissions', () => {",
+                  "  pm.expect(json.data.phoneMasked).to.eql('090****002');",
+                  "  pm.expect(json.data.roles).to.eql(['PROPERTY_MANAGER']);",
+                  "  pm.expect(json.data.activeBuildingId).to.eql(pm.environment.get('buildingA'));",
+                  "  pm.expect(json.data.permissions).to.include('rooms:manage:department');",
+                  "  pm.expect(json.data.residence).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09 Refresh - rotate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{pmRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 new pair, same session', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.sessionId).to.eql(pm.environment.get('pmSessionId'));",
+                  "  pm.expect(json.data.refreshToken).to.not.eql(pm.environment.get('pmRefreshToken'));",
+                  "});",
+                  "pm.environment.set('pmSpentRefreshToken', pm.environment.get('pmRefreshToken'));",
+                  "pm.environment.set('pmAccessToken', json.data.accessToken);",
+                  "pm.environment.set('pmRefreshToken', json.data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10 Refresh - replay the spent token → 401 reuse, session revoked",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{pmSpentRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(401, 'AUTH_REFRESH_TOKEN_REUSED');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11 Me - access token of the revoked session → 401 immediately",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(401, 'AUTH_SESSION_REVOKED');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12 Refresh - garbage token → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"not-a-real-token\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(401, 'AUTH_TOKEN_INVALID');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13 Sessions - list (second PM session still alive)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmSecondAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/sessions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "sessions"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 list with current flag, no secrets', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const current = json.data.find((s) => s.current);",
+                  "  pm.expect(current.id).to.eql(pm.environment.get('pmSecondSessionId'));",
+                  "  pm.expect(JSON.stringify(json.data)).to.not.match(/hash|refresh/i);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14 Sessions - revoke someone else's session → 404",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmSecondAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/sessions/{{landlordBSessionPlaceholder}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "sessions",
+                "{{landlordBSessionPlaceholder}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('landlordBSessionPlaceholder', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(404, 'RES_NOT_FOUND');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15 Change password - wrong current → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmSecondAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/password/change",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "password",
+                "change"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"Wrong-password-1\",\n  \"newPassword\": \"Another-long-passphrase\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(401, 'AUTH_CREDENTIALS_INVALID');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16 Change password - same as current → 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmSecondAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/password/change",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "password",
+                "change"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{password}}\",\n  \"newPassword\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(422, 'AUTH_PASSWORD_POLICY_VIOLATION');",
+                  "pm.test('SAME_AS_CURRENT', () => pm.expect(json.details).to.eql([{ field: 'newPassword', issue: 'SAME_AS_CURRENT' }]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17 Logout - PM",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmSecondAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "18 Me - after logout → 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmSecondAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(401, 'AUTH_SESSION_REVOKED');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "19 Login - landlord A step 1 → 202 OTP challenge",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "debugCode is only returned when AUTH_OTP_DEBUG_ECHO=true (local). In real use the code arrives by SMS.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{landlordAPhone}}\",\n  \"password\": \"{{password}}\",\n  \"deviceId\": \"postman-landlord\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('202 challenge, no tokens', () => {",
+                  "  pm.response.to.have.status(202);",
+                  "  pm.expect(json.data.mfaRequired).to.eql(true);",
+                  "  pm.expect(json.data.otpSentTo).to.eql('090****001');",
+                  "  pm.expect(json.data.accessToken).to.eql(undefined);",
+                  "});",
+                  "pm.environment.set('landlordChallengeId', json.data.challengeId);",
+                  "pm.environment.set('landlordOtp', json.data.debugCode);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "20 Login MFA - wrong code → 400 with attempts left",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login/mfa",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login",
+                "mfa"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{landlordChallengeId}}\",\n  \"code\": \"{{landlordWrongOtp}}\",\n  \"deviceId\": \"postman-landlord\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('landlordWrongOtp', pm.environment.get('landlordOtp') === '000000' ? '111111' : '000000');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(400, 'AUTH_OTP_INVALID');",
+                  "pm.test('4 attempts left', () => pm.expect(json.details[0].attemptsRemaining).to.eql(4));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "21 Login MFA - from another device → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login/mfa",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login",
+                "mfa"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{landlordChallengeId}}\",\n  \"code\": \"{{landlordOtp}}\",\n  \"deviceId\": \"someone-else\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(400, 'AUTH_OTP_INVALID');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "22 Login MFA - landlord A step 2 → tokens",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login/mfa",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login",
+                "mfa"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{landlordChallengeId}}\",\n  \"code\": \"{{landlordOtp}}\",\n  \"deviceId\": \"postman-landlord\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 tokens', () => { pm.response.to.have.status(200); pm.expect(json.data.user.roles).to.eql(['LANDLORD']); });",
+                  "pm.environment.set('landlordAccessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "23 Login MFA - same code again → 400 expired",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login/mfa",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login",
+                "mfa"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"challengeId\": \"{{landlordChallengeId}}\",\n  \"code\": \"{{landlordOtp}}\",\n  \"deviceId\": \"postman-landlord\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(400, 'AUTH_OTP_EXPIRED');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "24 Login - tenant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{tenantPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('tenantAccessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "25 Me - tenant sees own-scope permissions only",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('rooms:read:own but not the room directory', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.permissions).to.include('rooms:read:own');",
+                  "  pm.expect(json.data.permissions).to.not.include('rooms:read:department');",
+                  "  pm.expect(json.data.residence).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26 Users - tenant cannot list accounts → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(403, 'AUTH_FORBIDDEN_RESOURCE');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "27 Users - landlord creates a guard account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{createStaffKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{newStaffPhone}}\",\n  \"fullName\": \"Bảo vệ ca đêm (Postman)\",\n  \"roles\": [\n    \"GUARD\"\n  ],\n  \"buildingIds\": [\n    \"{{buildingA}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('newStaffPhone', '091' + Math.floor(1000000 + Math.random() * 8999999));",
+                  "pm.environment.set('createStaffKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 pending account', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.data.status).to.eql('PENDING_ACTIVATION');",
+                  "  pm.expect(json.data.roles).to.eql(['GUARD']);",
+                  "  pm.expect(json.data.buildingIds).to.eql([pm.environment.get('buildingA')]);",
+                  "  pm.expect(json.data.phoneMasked).to.match(/^091\\*{4}\\d{3}$/);",
+                  "});",
+                  "pm.environment.set('newStaffId', json.data.id);",
+                  "pm.environment.set('newStaffVersion', json.data.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "28 Users - replay with the same Idempotency-Key → same account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{createStaffKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{newStaffPhone}}\",\n  \"fullName\": \"Bảo vệ ca đêm (Postman)\",\n  \"roles\": [\n    \"GUARD\"\n  ],\n  \"buildingIds\": [\n    \"{{buildingA}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 replayed, same id', () => { pm.response.to.have.status(201); pm.expect(json.data.id).to.eql(pm.environment.get('newStaffId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "29 Users - same phone, new key → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{newStaffPhone}}\",\n  \"fullName\": \"Duplicate\",\n  \"roles\": [\n    \"GUARD\"\n  ],\n  \"buildingIds\": [\n    \"{{buildingA}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(409, 'RES_ALREADY_EXISTS');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "30 Users - building of another landlord → 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0919 876 543\",\n  \"fullName\": \"X\",\n  \"roles\": [\n    \"GUARD\"\n  ],\n  \"buildingIds\": [\n    \"{{buildingB}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(403, 'AUTH_FORBIDDEN_RESOURCE');",
+                  "pm.test('names the foreign building', () => pm.expect(json.details[0]).to.include({ issue: 'NOT_YOUR_BUILDING', buildingId: pm.environment.get('buildingB') }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "31 Users - TENANT role by hand → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0919 876 544\",\n  \"fullName\": \"X\",\n  \"roles\": [\n    \"TENANT\"\n  ],\n  \"buildingIds\": [\n    \"{{buildingA}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(400, 'REQ_VALIDATION_ERROR');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "32 Users - list guards of my buildings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users?role=GUARD&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "GUARD"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 only my building, paginated', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.map((u) => u.id)).to.include(pm.environment.get('newStaffId'));",
+                  "  json.data.forEach((u) => pm.expect(u.buildingIds.every((b) => b === pm.environment.get('buildingA'))).to.eql(true));",
+                  "  pm.expect(json.meta.pagination.limit).to.eql(50);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "33 Users - landlord disables themselves → 409",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{landlordAUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{landlordAUserId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DISABLED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('landlordAUserId', JSON.parse(Buffer.from(pm.environment.get('landlordAccessToken').split('.')[1], 'base64').toString()).sub);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(409, 'RES_CONFLICT');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "34 OTP - unknown number → 202 without a code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp",
+                "request"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0919 999 997\",\n  \"purpose\": \"ACTIVATE_ACCOUNT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('202 generic answer', () => {",
+                  "  pm.response.to.have.status(202);",
+                  "  pm.expect(json.data).to.eql({ expiresInSeconds: 300, resendAfterSeconds: 60 });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "35 OTP - activation code for the new guard",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp",
+                "request"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{newStaffPhone}}\",\n  \"purpose\": \"ACTIVATE_ACCOUNT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('202 + debug code', () => { pm.response.to.have.status(202); pm.expect(json.data.debugCode).to.match(/^\\d{6}$/); });",
+                  "pm.environment.set('activationOtp', json.data.debugCode);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "36 OTP - again within 60 s → 429",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp",
+                "request"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{newStaffPhone}}\",\n  \"purpose\": \"ACTIVATE_ACCOUNT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(429, 'AUTH_OTP_RATE_LIMITED');",
+                  "pm.test('Retry-After', () => pm.expect(Number(pm.response.headers.get('Retry-After'))).to.be.within(1, 60));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "37 Activate - weak password → 422 (code kept)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "activate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{newStaffPhone}}\",\n  \"code\": \"{{activationOtp}}\",\n  \"newPassword\": \"password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(422, 'AUTH_PASSWORD_POLICY_VIOLATION');",
+                  "pm.test('COMMON_PASSWORD', () => pm.expect(json.details[0].issue).to.eql('COMMON_PASSWORD'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "38 Activate - choose a password → signed in",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "activate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{newStaffPhone}}\",\n  \"code\": \"{{activationOtp}}\",\n  \"newPassword\": \"Night-shift-guard-2026\",\n  \"deviceName\": \"Guard phone\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 tokens for the new guard', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.user.id).to.eql(pm.environment.get('newStaffId'));",
+                  "  pm.expect(json.data.user.roles).to.eql(['GUARD']);",
+                  "});",
+                  "pm.environment.set('newStaffAccessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "39 Users - landlord disables the guard",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{newStaffId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{newStaffId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DISABLED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 disabled', () => { pm.response.to.have.status(200); pm.expect(json.data.status).to.eql('DISABLED'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "40 Me - disabled guard's token → 401 at once",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{newStaffAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(401, 'AUTH_SESSION_REVOKED');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "41 Login - disabled guard (right password) → 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{newStaffPhone}}\",\n  \"password\": \"Night-shift-guard-2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(403, 'AUTH_ACCOUNT_DISABLED');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "42 Logout everywhere - tenant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout-all"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "43 Me - tenant after logout-all → 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(401, 'AUTH_SESSION_REVOKED');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

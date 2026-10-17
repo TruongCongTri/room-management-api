@@ -73,7 +73,7 @@ describe('AuditLogModule (Enterprise Audit Architecture)', () => {
     it('should save immutable audit log with full actor context', async () => {
       jest.spyOn(contextService, 'getCurrentUser').mockReturnValue({
         id: 'usr_actor_42',
-        email: 'manager@rental.vn',
+        phoneMasked: '090****567',
         tenantId: 'building_hn',
         departmentId: 'dep_OPERATIONS',
         roles: ['PROPERTY_MANAGER'],
@@ -91,7 +91,7 @@ describe('AuditLogModule (Enterprise Audit Architecture)', () => {
         expect.objectContaining({
           buildingId: 'building_hn',
           actorId: 'usr_actor_42',
-          actorEmail: 'manager@rental.vn',
+          actorLabel: '090****567',
           departmentId: 'dep_OPERATIONS',
           resource: 'contracts',
           resourceId: 'ct_777',
@@ -135,7 +135,7 @@ describe('AuditLogModule (Enterprise Audit Architecture)', () => {
     it('should restrict query to OWN actorId for users with OWN scope only', async () => {
       jest.spyOn(contextService, 'getCurrentUser').mockReturnValue({
         id: 'usr_employee',
-        email: 'emp@rental.vn',
+        phoneMasked: '090****567',
         tenantId: 'tenant_vn',
         roles: ['STAFF'],
         rules: [
@@ -159,7 +159,7 @@ describe('AuditLogModule (Enterprise Audit Architecture)', () => {
     it('should restrict query to the assigned building for users with DEPARTMENT scope', async () => {
       jest.spyOn(contextService, 'getCurrentUser').mockReturnValue({
         id: 'usr_pm',
-        email: 'pm@rental.vn',
+        phoneMasked: '090****567',
         tenantId: 'building_hn',
         roles: ['PROPERTY_MANAGER'],
         rules: [
@@ -181,7 +181,7 @@ describe('AuditLogModule (Enterprise Audit Architecture)', () => {
     it('should let GLOBAL scope read every building assigned in the token, and nothing else', async () => {
       jest.spyOn(contextService, 'getCurrentUser').mockReturnValue({
         id: 'usr_landlord',
-        email: 'landlord@rental.vn',
+        phoneMasked: '090****567',
         tenantId: 'building_hn',
         buildingIds: ['building_hn', 'building_dn'],
         roles: ['LANDLORD'],

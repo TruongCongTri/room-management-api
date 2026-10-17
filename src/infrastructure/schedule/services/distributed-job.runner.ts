@@ -65,7 +65,6 @@ export async function runDistributedJob(
       isBackgroundJob: true,
       user: {
         id: SYSTEM_USER_ID,
-        email: 'cron@system.internal',
         roles: [SYSTEM_ROLE],
         rules: [],
       },

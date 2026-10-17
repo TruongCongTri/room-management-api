@@ -3,6 +3,7 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 
 import { CoreModule } from './core/core.module';
 import { InfrastructureModule } from './infrastructure/infrastructure.module';
+import { IdentityModule } from './modules/identity/identity.module';
 
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -37,8 +38,8 @@ import { CustomValidationPipe } from './common/pipes/validation.pipe';
   imports: [
     CoreModule,
     InfrastructureModule,
-    // Domain Business Modules (tài liệu 02): Identity, Properties, Assets, Tenants, Contracts,
-    // Metering, Billing, ComplianceVn - import tại đây
+    // Domain Business Modules (tài liệu 02, thứ tự build: tài liệu 06)
+    IdentityModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

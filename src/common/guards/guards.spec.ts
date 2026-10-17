@@ -43,7 +43,7 @@ describe('Common Guards (Enterprise Auth & RBAC Suite)', () => {
 
     const mockUser: RequestUserContext = {
       id: 'usr_validated',
-      email: 'pilot@rental.vn',
+      phoneMasked: '090****567',
       roles: ['ROOM_CREW'],
       rules: [],
     };

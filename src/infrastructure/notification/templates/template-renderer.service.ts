@@ -8,6 +8,8 @@ import { Injectable } from '@nestjs/common';
 
 export const NOTIFICATION_TEMPLATES = {
   OTP_VERIFICATION: 'OTP_VERIFICATION',
+  ACCOUNT_INVITATION: 'ACCOUNT_INVITATION',
+  SECURITY_ALERT: 'SECURITY_ALERT',
   INVOICE_ISSUED: 'INVOICE_ISSUED',
   INVOICE_OVERDUE: 'INVOICE_OVERDUE',
   PAYMENT_RECEIVED: 'PAYMENT_RECEIVED',
@@ -31,6 +33,16 @@ export class TemplateRendererService {
     this.registerTemplate(T.OTP_VERIFICATION, {
       subject: 'Mã xác thực OTP của bạn',
       template: 'Mã OTP của bạn là: {{otp}}. Mã có hiệu lực trong {{expiresInMinutes}} phút.',
+    });
+    this.registerTemplate(T.ACCOUNT_INVITATION, {
+      subject: 'Tài khoản quản lý tòa nhà của bạn đã được tạo',
+      template:
+        'Chào {{user.name}}, tài khoản {{user.roleLabel}} của bạn đã được tạo. ' +
+        'Mở ứng dụng, chọn "Kích hoạt tài khoản" và nhập số điện thoại này để nhận mã OTP, sau đó đặt mật khẩu.',
+    });
+    this.registerTemplate(T.SECURITY_ALERT, {
+      subject: 'Cảnh báo bảo mật tài khoản',
+      template: 'Cảnh báo bảo mật: {{alert.message}} lúc {{alert.occurredAt}}. Nếu không phải bạn, hãy đổi mật khẩu ngay.',
     });
 
     // Zalo ZNS / Email - khách thuê

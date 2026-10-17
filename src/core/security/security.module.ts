@@ -16,6 +16,7 @@ import { resolveThrottleTier } from './throttler/throttler.decorators';
 import { createThrottlerStorage } from './throttler/throttler-storage.provider';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { JwtTokenService } from './jwt/jwt-token.service';
+import { SessionRevocationStore } from './jwt/session-revocation.store';
 
 export function buildJwtOptions(config: AppConfigService): JwtModuleOptions {
   const jwt = config.security.jwt;
@@ -78,13 +79,14 @@ export function buildJwtOptions(config: AppConfigService): JwtModuleOptions {
     }),
     IdempotencyModule,
   ],
-  providers: [EncryptionService, CustomThrottlerGuard, JwtTokenService],
+  providers: [EncryptionService, CustomThrottlerGuard, SessionRevocationStore, JwtTokenService],
   exports: [
     IdempotencyModule,
     EncryptionService,
     CustomThrottlerGuard,
     ThrottlerModule,
     JwtModule,
+    SessionRevocationStore,
     JwtTokenService,
   ],
 })

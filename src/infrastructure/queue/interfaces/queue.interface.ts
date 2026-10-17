@@ -5,7 +5,7 @@ export interface QueueJobMetadata {
   traceId: string;
   tenantId: string;
   actorId?: string;
-  actorEmail?: string;
+  actorPhoneMasked?: string;
   locale?: string;
   enqueuedAt: string;
   /** W3C Trace Context để span của worker nối tiếp distributed trace của request gốc */

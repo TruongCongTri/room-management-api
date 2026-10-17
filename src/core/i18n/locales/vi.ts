@@ -7,6 +7,14 @@ export const vi: Record<string, string> = {
   AUTH_TENANT_MISMATCH: 'Tài khoản không thuộc tổ chức được yêu cầu.',
   AUTH_CREDENTIALS_INVALID: 'Thông tin đăng nhập không chính xác.',
   AUTH_SESSION_REVOKED: 'Phiên đăng nhập đã bị thu hồi.',
+  AUTH_ACCOUNT_LOCKED: 'Số điện thoại này tạm bị khóa do nhập sai mật khẩu nhiều lần. Vui lòng thử lại sau {{retryAfter}} giây.',
+  AUTH_ACCOUNT_DISABLED: 'Tài khoản đã bị vô hiệu hóa. Vui lòng liên hệ quản lý tòa nhà.',
+  AUTH_OTP_INVALID: 'Mã OTP không đúng.',
+  AUTH_OTP_EXPIRED: 'Mã OTP đã hết hạn hoặc đã được sử dụng. Vui lòng yêu cầu mã mới.',
+  AUTH_OTP_TOO_MANY_ATTEMPTS: 'Bạn đã nhập sai OTP quá số lần cho phép. Vui lòng yêu cầu mã mới.',
+  AUTH_OTP_RATE_LIMITED: 'Bạn đã yêu cầu OTP quá nhiều lần. Vui lòng thử lại sau {{retryAfter}} giây.',
+  AUTH_REFRESH_TOKEN_REUSED: 'Phát hiện phiên đăng nhập bị dùng lại bất thường. Phiên đã bị thu hồi, vui lòng đăng nhập lại.',
+  AUTH_PASSWORD_POLICY_VIOLATION: 'Mật khẩu chưa đủ an toàn.',
 
   // Dữ liệu đầu vào
   REQ_VALIDATION_ERROR: 'Dữ liệu gửi lên không hợp lệ.',
@@ -44,6 +52,7 @@ export const vi: Record<string, string> = {
   BIZ_LAST_OCCUPANT_REQUIRES_CHECKOUT: 'Người đứng tên là người ở cuối cùng: vui lòng làm thủ tục trả phòng và quyết toán tiền cọc.',
   BIZ_TENANT_ID_CARD_DUPLICATE: 'Số CCCD/Hộ chiếu đã được đăng ký cho khách thuê khác.',
   BIZ_PDPL_CONSENT_REQUIRED: 'Khách thuê cần đồng ý điều khoản xử lý dữ liệu cá nhân (Luật 91/2025/QH15).',
+  BIZ_NO_ACTIVE_ROOM: 'Bạn hiện không ở phòng nào trong tòa nhà này.',
   BIZ_METER_READING_DECREASED: 'Chỉ số mới thấp hơn chỉ số kỳ trước. Nếu đồng hồ đã được thay/quay vòng, vui lòng đánh dấu reset đồng hồ.',
   BIZ_METER_READING_DUPLICATE: 'Phòng đã được ghi chỉ số trong kỳ này.',
   BIZ_METER_PHOTO_REQUIRED: 'Cần tải ảnh đồng hồ điện và nước trước khi ghi chỉ số.',

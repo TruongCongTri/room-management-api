@@ -46,7 +46,7 @@ export abstract class BaseQueueWorker<T = any> extends WorkerHost {
               user: metadata?.actorId
                 ? {
                     id: metadata.actorId,
-                    email: metadata.actorEmail || `${metadata.actorId}@worker.system`,
+                    phoneMasked: metadata.actorPhoneMasked,
                     roles: ['BACKGROUND_WORKER'],
                     rules: [],
                   }

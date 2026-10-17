@@ -67,7 +67,7 @@ describe('PermissionsGuard (ABAC & RBAC Test)', () => {
       ]);
     jest.spyOn(contextService, 'getCurrentUser').mockReturnValue({
       id: 'usr_1',
-      email: 'agent@rental.vn',
+      phoneMasked: '090****567',
       roles: ['AGENT'],
       rules: [
         {
@@ -102,7 +102,7 @@ describe('PermissionsGuard (ABAC & RBAC Test)', () => {
     // Quản lý được phân công tòa nhà A
     jest.spyOn(contextService, 'getCurrentUser').mockReturnValue({
       id: 'usr_lead',
-      email: 'lead@rental.vn',
+      phoneMasked: '090****567',
       tenantId: BUILDING_A,
       roles: ['PROPERTY_MANAGER'],
       rules: [
@@ -140,7 +140,7 @@ describe('PermissionsGuard (ABAC & RBAC Test)', () => {
 
     jest.spyOn(contextService, 'getCurrentUser').mockReturnValue({
       id: 'usr_lead',
-      email: 'lead@rental.vn',
+      phoneMasked: '090****567',
       tenantId: BUILDING_A,
       roles: ['PROPERTY_MANAGER'],
       rules: [
@@ -166,7 +166,7 @@ describe('PermissionsGuard (ABAC & RBAC Test)', () => {
   describe('Enterprise hardening', () => {
     const salesLead: RequestUserContext = {
       id: 'usr_lead',
-      email: 'lead@rental.vn',
+      phoneMasked: '090****567',
       tenantId: BUILDING_A,
       roles: ['PROPERTY_MANAGER'],
       rules: [

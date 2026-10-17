@@ -8,8 +8,8 @@ export const REGEX_PATTERNS = {
   // UUID v4 tiêu chuẩn (RFC 4122)
   UUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
 
-  // Số điện thoại Việt Nam (+84 hoặc 0...)
-  VIETNAM_PHONE: /^(?:\+84|0)(?:3[2-9]|5[6|8|9]|7[0|6-9]|8[1-9]|9[0-9])[0-9]{7}$/,
+  // Số di động Việt Nam (+84 hoặc 0...): 03x Viettel, 05[25689] Vietnamobile/Wintel/Gmobile, 07x MobiFone, 08x, 09x
+  VIETNAM_PHONE: /^(?:\+84|0)(?:3[2-9]|5[25689]|7[06-9]|8[1-9]|9[0-9])[0-9]{7}$/,
 
   // Thẻ Căn cước / CCCD (12 chữ số)
   VIETNAM_CITIZEN_ID: /^[0-9]{12}$/,

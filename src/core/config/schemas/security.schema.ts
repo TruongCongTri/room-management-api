@@ -2,10 +2,12 @@
  * Nhóm biến: Mã hóa cấp trường (FLE), JWT, Rate limiting và Webhook ingress.
  */
 import { z } from 'zod';
+import { isValidDuration } from '../../security/jwt/duration';
 import {
   addIssue,
   assertPemOrPath,
   emptyToUndefined,
+  envBool,
   envEnum,
   envInt,
   envOptionalString,
@@ -70,6 +72,23 @@ export const securityEnvShape = {
   JWT_REFRESH_EXPIRES_IN: envString('7d'),
   JWT_CLOCK_TOLERANCE_SEC: envInt(5, 0, 300),
 
+  // Đăng nhập bằng số điện thoại (IdentityModule, tài liệu 04 mục 1.4)
+  // Phiên refresh: JWT_REFRESH_EXPIRES_IN là hạn TRƯỢT khi không dùng, AUTH_REFRESH_ABSOLUTE_EXPIRES_IN là hạn tuyệt đối
+  AUTH_REFRESH_ABSOLUTE_EXPIRES_IN: envString('30d'),
+  // Vai trò phải xác nhận OTP ở MỌI lần đăng nhập (vai trò liên quan tiền)
+  AUTH_MFA_ROLES: envString('LANDLORD,ACCOUNTANT'),
+  AUTH_OTP_TTL_SEC: envInt(300, 60, 900),
+  AUTH_OTP_MAX_ATTEMPTS: envInt(5, 1, 10),
+  AUTH_OTP_RESEND_COOLDOWN_SEC: envInt(60, 10, 600),
+  AUTH_OTP_DAILY_LIMIT: envInt(5, 1, 50),
+  AUTH_MFA_OTP_DAILY_LIMIT: envInt(20, 1, 200),
+  AUTH_LOGIN_MAX_FAILURES: envInt(5, 1, 20),
+  AUTH_LOGIN_FAILURE_WINDOW_SEC: envInt(900, 60, 86400),
+  AUTH_LOCK_BASE_SEC: envInt(900, 60, 86400),
+  AUTH_LOCK_MAX_SEC: envInt(86400, 60, 604800),
+  // CHỈ local / kiểm thử: trả mã OTP trong response (debugCode) để test bằng Postman. Cấm trên production.
+  AUTH_OTP_DEBUG_ECHO: envBool(false),
+
   // Rate Limiting (Throttler) - 3 tầng nghiệp vụ, cửa sổ chung THROTTLE_TTL (ms)
   THROTTLE_TTL: envInt(60000, 1000),
   THROTTLE_LIMIT: envInt(60, 1),
@@ -108,7 +127,18 @@ export function refineSecurityEnv(env: SecurityEnv, ctx: ZodRefineCtx): void {
   assertPemOrPath(ctx, 'JWT_PUBLIC_KEY', env.JWT_PUBLIC_KEY);
   assertPemOrPath(ctx, 'JWT_PRIVATE_KEY', env.JWT_PRIVATE_KEY);
 
+  for (const key of ['JWT_EXPIRES_IN', 'JWT_REFRESH_EXPIRES_IN', 'AUTH_REFRESH_ABSOLUTE_EXPIRES_IN'] as const) {
+    if (!isValidDuration(env[key])) addIssue(ctx, key, `${key} must be a duration such as 900, 15m, 12h or 7d`);
+  }
+  if (env.AUTH_LOCK_MAX_SEC < env.AUTH_LOCK_BASE_SEC) {
+    addIssue(ctx, 'AUTH_LOCK_MAX_SEC', 'AUTH_LOCK_MAX_SEC must be >= AUTH_LOCK_BASE_SEC');
+  }
+
   if (env.NODE_ENV !== 'production') return;
+
+  if (env.AUTH_OTP_DEBUG_ECHO) {
+    addIssue(ctx, 'AUTH_OTP_DEBUG_ECHO', 'AUTH_OTP_DEBUG_ECHO must never be enabled in production (it returns OTP codes in responses)');
+  }
 
   if (env.JWT_SECRET && env.JWT_SECRET === env.JWT_REFRESH_SECRET) {
     addIssue(ctx, 'JWT_REFRESH_SECRET', 'JWT_REFRESH_SECRET must differ from JWT_SECRET in production');

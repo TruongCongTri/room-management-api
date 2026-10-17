@@ -6,7 +6,10 @@ export const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
 export interface RequestUserContext {
   id: string;
-  email: string;
+  /** Số điện thoại đã che (090****567) - định danh hiển thị của người dùng, KHÔNG BAO GIỜ là số đầy đủ */
+  phoneMasked?: string;
+  /** Phiên đăng nhập (auth_sessions.id, claim `sid`) - dùng cho thu hồi tức thời & đăng xuất */
+  sessionId?: string;
   /** Tòa nhà (building_id) mặc định của user - phạm vi cô lập dữ liệu RLS */
   tenantId?: string;
   /** Các tòa nhà user được phép chuyển sang qua header X-Building-ID */

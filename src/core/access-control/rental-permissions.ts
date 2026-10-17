@@ -27,6 +27,8 @@ export enum RentalResource {
   TAX = 'tax',
   COMPLIANCE = 'compliance',
   AUDIT = 'audit',
+  /** Tài khoản nhân viên, vai trò & quyền truy cập tòa nhà (chỉ LANDLORD qua `*:*:global`) */
+  USERS = 'users',
 }
 
 /** Wildcard resource: quyền áp dụng cho mọi tài nguyên */
@@ -90,6 +92,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<RentalRole, readonly Effe
   // Tự phục vụ: chỉ đọc dữ liệu của chính mình
   [RentalRole.TENANT]: [
     grant(R.TENANTS, Action.READ, OWN),
+    // Chỉ phòng mình ĐANG ở (RoomAccessGuard + OCCUPANCY_SELF_SCOPE), hết quyền ngay khi chuyển đi
+    grant(R.ROOMS, Action.READ, OWN),
     // Thiết bị đã bàn giao trong phòng của mình (biên bản bàn giao)
     grant(R.ASSETS, Action.READ, OWN),
     grant(R.CONTRACTS, Action.READ, OWN),

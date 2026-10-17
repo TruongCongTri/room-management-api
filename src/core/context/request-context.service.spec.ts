@@ -17,7 +17,7 @@ describe('RequestContextService (Enterprise Scenarios)', () => {
       startTime: Date.now() - 50, // Giả lập đã chạy được 50ms
       user: {
         id: 'usr_enterprise_1',
-        email: 'lead@rental.vn',
+        phoneMasked: '090****567',
         tenantId: 'tenant_vietnam',
         departmentId: 'dep_OPERATIONS',
         roles: ['AGENT_LEAD'],
@@ -38,7 +38,7 @@ describe('RequestContextService (Enterprise Scenarios)', () => {
       expect(service.getTraceId()).toBe('TRACE-TEST-999');
       expect(service.getClientIp()).toBe('10.0.0.1');
       expect(service.getUserId()).toBe('usr_enterprise_1');
-      expect(service.getUserEmail()).toBe('lead@rental.vn');
+      expect(service.getUserPhoneMasked()).toBe('090****567');
       expect(service.getTenantId()).toBe('tenant_vietnam');
       expect(service.getDepartmentId()).toBe('dep_OPERATIONS');
       expect(service.getUserRoles()).toContain('AGENT_LEAD');
@@ -63,7 +63,7 @@ describe('RequestContextService (Enterprise Scenarios)', () => {
       // Giả lập Guard/Interceptor nạp user sau khi giải mã token JWT
       const authenticatedUser: RequestUserContext = {
         id: 'usr_authenticated',
-        email: 'user@auth.com',
+        phoneMasked: '090****567',
         roles: ['CUSTOMER'],
         rules: [],
       };
@@ -72,7 +72,7 @@ describe('RequestContextService (Enterprise Scenarios)', () => {
 
       // User đã có mặt trong AsyncLocalStorage của request này
       expect(service.getUserId()).toBe('usr_authenticated');
-      expect(service.getUserEmail()).toBe('user@auth.com');
+      expect(service.getUserPhoneMasked()).toBe('090****567');
     });
   });
 
@@ -92,7 +92,7 @@ describe('RequestContextService (Enterprise Scenarios)', () => {
         traceId: 'TRACE-TENANT',
         clientIp: '10.0.0.2',
         startTime: Date.now(),
-        user: { id: 'usr_1', email: 'a@b.c', tenantId: 'tenant_A', roles: [], rules: [] },
+        user: { id: 'usr_1', phoneMasked: '090****567', tenantId: 'tenant_A', roles: [], rules: [] },
         metadata: new Map(),
       },
       () => {

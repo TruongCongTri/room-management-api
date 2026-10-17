@@ -25,7 +25,6 @@ const defaults: Record<string, string> = {
   JWT_REFRESH_SECRET: 'e2e-refresh-secret-with-at-least-32-characters',
   SHUTDOWN_DRAIN_DELAY_MS: '0',
   SHUTDOWN_HOOK_TIMEOUT_MS: '3000',
-  THROTTLE_LIMIT: '3',
   OUTBOX_POLL_INTERVAL_MS: '200',
   OUTBOX_LEASE_MS: '5000',
   WS_ENABLED: 'false',
@@ -35,3 +34,15 @@ const defaults: Record<string, string> = {
 for (const [key, value] of Object.entries(defaults)) {
   process.env[key] ??= value;
 }
+
+/**
+ * Biến mà từng file e2e tự ghi đè (identity-e2e-env.ts, disable-outbox-poller.ts): luôn đặt lại về mức chuẩn
+ * ở đầu MỖI file - với --runInBand các file dùng chung process.env của worker, giá trị bị ghi đè sẽ rò sang file sau.
+ */
+const PER_FILE_BASELINE: Record<string, string> = {
+  THROTTLE_LIMIT: '3',
+  THROTTLE_SENSITIVE_LIMIT: '5',
+  AUTH_OTP_DEBUG_ECHO: 'false',
+  OUTBOX_ENABLED: 'true',
+};
+Object.assign(process.env, PER_FILE_BASELINE);

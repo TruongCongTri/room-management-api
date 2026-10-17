@@ -170,7 +170,7 @@ src/
 
 #### 2.5 `AuditLogModule` (`src/infrastructure/audit/`)
 
-* **`audit_logs`** (WORM): `building_id` (NULL for system events), `actor_id`, `actor_email`, `department_id`, `action` (`CREATE | UPDATE | DELETE | RESTORE | EXECUTE`), `resource`, `resource_id`, `diff_snapshot` (JSONB), `metadata`, `trace_id`, `client_ip`, `user_agent`, `created_at`. Indexes: `idx_audit_bld_created`, `idx_audit_bld_resource`, `idx_audit_actor_created_desc`, `idx_audit_department_created`, `idx_audit_created_tiering`.
+* **`audit_logs`** (WORM): `building_id` (NULL for system events), `actor_id`, `actor_label` (the actor's masked phone, NULL for system jobs), `department_id`, `action` (`CREATE | UPDATE | DELETE | RESTORE | EXECUTE`), `resource`, `resource_id`, `diff_snapshot` (JSONB), `metadata`, `trace_id`, `client_ip`, `user_agent`, `created_at`. Indexes: `idx_audit_bld_created`, `idx_audit_bld_resource`, `idx_audit_actor_created_desc`, `idx_audit_department_created`, `idx_audit_created_tiering`.
 * **Immutability:** triggers `trg_audit_logs_immutable` (row: UPDATE / DELETE) and `trg_audit_logs_immutable_truncate` raise `audit_logs is append-only (WORM)`. The only exception is `DELETE` inside a transaction that set `app.audit_tiering = 'on'` locally (used by tiering).
 * **Writers:** `AuditInterceptor` records mutating HTTP calls (`POST/PUT/PATCH/DELETE`; opt out with `@SkipAudit()`); `AuditEntitySubscriber` records field-level diffs for `@Auditable()` entities **in the same transaction** as the change, masking encrypted columns.
 * **Scoped retrieval (`AuditViewerService`):** `GLOBAL` → every building listed in the token (`buildingIds`), optionally narrowed by `buildingId`; `DEPARTMENT` → the active building; `OWN` → the caller's own actions in the active building.
@@ -194,9 +194,10 @@ src/
   | `PROPERTY_MANAGER` | `rooms`, `assets`, `tenants`, `contracts`, `meters`, `compliance` → `manage:department`; `deposits`, `invoices`, `settlements` → `read:department`; `settlements:execute:department`; `audit:read:department` |
   | `ACCOUNTANT` | `invoices`, `payments` → `manage:department`; `meters:approve:department`; `deposits:settle:department`; `settlements:execute:department`; `tax:export:department`; read on rooms, assets, tenants, contracts, meters, deposits, settlements, compliance, audit |
   | `GUARD` | `rooms:read`, `meters:upload`, `meters:create`, `meters:read` (department); `audit:read:own` |
-  | `TENANT` | `read:own` on tenants, assets (handed-over appliances), contracts, invoices, payments, meters, settlements, compliance, audit |
+  | `TENANT` | `read:own` on tenants, rooms (only the room they currently live in), assets (handed-over appliances), contracts, invoices, payments, meters, settlements, compliance, audit |
 
-* **Resolution order** (`UserPermissionResolver`): rules embedded in the token → `permissions:user:{userId}` cache (Redis, memory fallback) → `PERMISSION_RULES_LOADER` provided by the identity module (result cached) → default matrix for the token's roles. Unknown roles grant nothing.
+* **Resolution order** (`UserPermissionResolver`): rules embedded in the token → `permissions:user:{userId}` cache (Redis, memory fallback) → `PERMISSION_RULES_LOADER` (result cached). `IdentityModule` provides the loader: rules come from the `role_permissions` of the roles in `user_roles`, so the token's `roles` claim is never trusted for authorisation, and disabled, pending or unknown accounts get nothing. Only when no loader is registered does the resolver fall back to the default matrix for the token's roles. Unknown roles grant nothing.
+* **Own room (`OCCUPANCY_SELF_SCOPE`, `occupancy-self-scope.ts`):** `OccupancySelfScopeService.resolve(userId, buildingId)` returns the room a tenant currently lives in (cached `auth:self-scope:{buildingId}:{userId}`, 300 s, `evict()` on move-in / move-out / holder change / checkout). The resolver is registered by `ContractsModule`; until then it returns `null` (fail-closed).
 * **Enforcement:** `PermissionsGuard` checks (1) the action on the resource, (2) the minimum scope, (3) record-level ABAC on the subject returned by `subjectResolver` (loaded from the database). Ownership attributes from the request body are trusted only for `CREATE`. Explicit `DENY` always wins over `GRANT`.
 
 #### 3.2 Security headers (`src/core/security/headers/`)
@@ -439,7 +440,7 @@ A room can be shared by several people. **Every person** has an ID document (CCC
 
 ### 3.3 Guards (registration order in `AppModule`)
 
-1. `JwtAuthGuard` — Bearer token (`JWT_ALGORITHM`, issuer / audience / clock tolerance), zod-validated claims (`sub`, `email`, `buildingId`/`tenantId`, `buildingIds`, `departmentId`, `roles`, optional `rules`), refresh tokens rejected; honours `@Public()`.
+1. `JwtAuthGuard` — Bearer token (`JWT_ALGORITHM`, issuer / audience / clock tolerance), zod-validated claims (`sub`, `sid`, `phoneMasked`, `buildingId`/`tenantId`, `buildingIds`, `departmentId`, `roles`, optional `rules`), refresh tokens rejected, tokens of a revoked session (`SessionRevocationStore`, Redis `auth:revoked-sid:{sid}`, fail-closed `503` when Redis cannot answer) rejected with `AUTH_SESSION_REVOKED`; honours `@Public()`. Tokens are issued by `IdentityModule` (document 02, 2.0); sign-in uses the phone number.
 2. `CustomThrottlerGuard` — per user (authenticated) or per IP.
 3. `RolesGuard` — `@Roles()`.
 4. `PermissionsGuard` — CASL (3.1).

@@ -47,11 +47,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let message = exception.message;
     let errorCode: string = mapStatusToErrorCode(status);
     let details: any = undefined;
+    // Lỗi có thời hạn chờ (khóa đăng nhập 423, giới hạn OTP 429): service ném kèm retryAfterSeconds
+    let retryAfterSeconds: number | undefined;
 
     // Phân tích chi tiết từ đối tượng phản hồi của NestJS
     if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
       const respObj = exceptionResponse as Record<string, any>;
       errorCode = respObj.errorCode || errorCode;
+      if (typeof respObj.retryAfterSeconds === 'number' && respObj.retryAfterSeconds > 0) {
+        retryAfterSeconds = Math.ceil(respObj.retryAfterSeconds);
+      }
       details = respObj.details || (Array.isArray(respObj.message) ? respObj.message : undefined);
 
       // ValidationPipe trả về mảng thông báo lỗi → chuẩn hóa message thành thông điệp chung
@@ -64,7 +69,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message = exceptionResponse;
     }
 
-    const retryAfter = status === HttpStatus.TOO_MANY_REQUESTS ? /after (\d+)s/i.exec(message)?.[1] : undefined;
+    const retryAfter =
+      retryAfterSeconds !== undefined
+        ? String(retryAfterSeconds)
+        : status === HttpStatus.TOO_MANY_REQUESTS
+          ? /after (\d+)s/i.exec(message)?.[1]
+          : undefined;
+    const isHttp = typeof host.getType !== 'function' || host.getType() === 'http';
+    if (retryAfterSeconds !== undefined && isHttp) {
+      host.switchToHttp().getResponse()?.setHeader?.('Retry-After', String(retryAfterSeconds));
+    }
 
     writeErrorResponse(
       host,

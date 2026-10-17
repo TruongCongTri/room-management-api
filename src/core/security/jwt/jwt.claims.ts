@@ -18,7 +18,10 @@ const uuid = (name: string) => z.string().regex(UUID_REGEX, `${name} must be a U
 
 export const accessTokenClaimsSchema = z.object({
   sub: z.string().min(1, 'sub (user id) is required'),
-  email: z.string().min(3),
+  /** Phiên đăng nhập phát hành token (auth_sessions.id) - bị thu hồi thì token mất hiệu lực ngay */
+  sid: uuid('sid').optional(),
+  /** Số điện thoại đã che - token không bao giờ mang số đầy đủ hay số giấy tờ tùy thân */
+  phoneMasked: z.string().max(32).optional(),
   /** Tòa nhà mặc định của user (phạm vi cô lập RLS). `tenantId` là tên cũ, vẫn được chấp nhận */
   buildingId: uuid('buildingId').optional(),
   tenantId: uuid('tenantId').optional(),

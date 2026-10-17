@@ -30,7 +30,7 @@ export abstract class BaseQueueProducer<T = any> {
         traceId: this.contextService.getTraceId(),
         tenantId: this.contextService.getTenantId() || 'global',
         actorId: this.contextService.getUserId(),
-        actorEmail: currentUser?.email,
+        actorPhoneMasked: currentUser?.phoneMasked,
         locale: this.contextService.getLocale(),
         enqueuedAt: new Date().toISOString(),
         traceparent: carrier.traceparent,

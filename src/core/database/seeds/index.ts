@@ -4,5 +4,7 @@
  */
 import type { DatabaseSeed } from './seed.interface';
 import { REFERENCE_DATA_SEEDS } from './reference-data.seed';
+import { devAccountsSeed } from '../../../modules/identity/seeds/dev-accounts.seed';
 
-export const SEEDS: DatabaseSeed[] = [...REFERENCE_DATA_SEEDS];
+// Tài khoản mẫu cần system_roles → chạy SAU dữ liệu tham chiếu
+export const SEEDS: DatabaseSeed[] = [...REFERENCE_DATA_SEEDS, devAccountsSeed];

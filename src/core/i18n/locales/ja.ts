@@ -7,6 +7,14 @@ export const ja: Record<string, string> = {
   AUTH_TENANT_MISMATCH: 'アカウントが要求された組織に属していません。',
   AUTH_CREDENTIALS_INVALID: 'ログイン情報が正しくありません。',
   AUTH_SESSION_REVOKED: 'このセッションは無効化されました。',
+  AUTH_ACCOUNT_LOCKED: 'パスワードの誤入力が多いため、この電話番号は一時的にロックされています。{{retryAfter}}秒後に再試行してください。',
+  AUTH_ACCOUNT_DISABLED: 'このアカウントは無効化されています。建物の管理者にお問い合わせください。',
+  AUTH_OTP_INVALID: '認証コードが正しくありません。',
+  AUTH_OTP_EXPIRED: '認証コードの有効期限が切れているか、既に使用されています。新しいコードを請求してください。',
+  AUTH_OTP_TOO_MANY_ATTEMPTS: '認証コードの誤入力が多すぎます。新しいコードを請求してください。',
+  AUTH_OTP_RATE_LIMITED: '認証コードの請求回数が多すぎます。{{retryAfter}}秒後に再試行してください。',
+  AUTH_REFRESH_TOKEN_REUSED: 'サインイントークンの不審な再利用を検知しました。セッションを無効化しました。再度サインインしてください。',
+  AUTH_PASSWORD_POLICY_VIOLATION: 'パスワードの強度が不十分です。',
 
   // 入力データ
   REQ_VALIDATION_ERROR: '送信されたデータが不正です。',
@@ -44,6 +52,7 @@ export const ja: Record<string, string> = {
   BIZ_LAST_OCCUPANT_REQUIRES_CHECKOUT: '名義人が最後の入居者です。退去精算と敷金精算を行ってください。',
   BIZ_TENANT_ID_CARD_DUPLICATE: 'この身分証/パスポート番号は他の入居者に登録済みです。',
   BIZ_PDPL_CONSENT_REQUIRED: '入居者は個人データ処理への同意が必要です（法律91/2025/QH15）。',
+  BIZ_NO_ACTIVE_ROOM: '現在、この建物のどの部屋にも入居していません。',
   BIZ_METER_READING_DECREASED: '新しいメーター値が前回より小さくなっています。メーター交換・一巡の場合はリセットとして登録してください。',
   BIZ_METER_READING_DUPLICATE: 'この部屋は今期のメーター値が登録済みです。',
   BIZ_METER_PHOTO_REQUIRED: 'メーター値の登録前に電気・水道メーターの写真が必要です。',

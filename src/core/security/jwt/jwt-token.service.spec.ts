@@ -35,11 +35,11 @@ function createService(env: Record<string, string> = {}, rules: any[] = []) {
 describe('JwtTokenService', () => {
   it('should sign and verify an HS256 access token without issuer/audience configured', async () => {
     const { service } = createService();
-    const token = await service.signAccessToken({ sub: 'usr_1', email: 'a@b.c', tenantId: TENANT, roles: ['GUARD'], rules: [] });
+    const token = await service.signAccessToken({ sub: 'usr_1', phoneMasked: '090****567', tenantId: TENANT, roles: ['GUARD'], rules: [] });
 
     await expect(service.verifyAccessToken(token)).resolves.toEqual({
       id: 'usr_1',
-      email: 'a@b.c',
+      phoneMasked: '090****567',
       tenantId: TENANT,
       buildingIds: undefined,
       departmentId: undefined,
@@ -53,7 +53,7 @@ describe('JwtTokenService', () => {
     const { service } = createService();
     const token = await service.signAccessToken({
       sub: 'usr_landlord',
-      email: 'landlord@rental.vn',
+      phoneMasked: '090****567',
       buildingId: TENANT,
       buildingIds: [TENANT, OTHER],
       roles: ['LANDLORD'],
@@ -69,10 +69,10 @@ describe('JwtTokenService', () => {
     const { service } = createService({ JWT_ISSUER: 'https://auth.rental.vn', JWT_AUDIENCE: 'room-management-api' });
     const other = createService({ JWT_ISSUER: 'https://evil.example', JWT_AUDIENCE: 'room-management-api' }).service;
 
-    const token = await service.signAccessToken({ sub: 'usr_1', email: 'a@b.c' });
+    const token = await service.signAccessToken({ sub: 'usr_1', phoneMasked: '090****567' });
     await expect(service.verifyAccessToken(token)).resolves.toEqual(expect.objectContaining({ id: 'usr_1' }));
 
-    const foreign = await other.signAccessToken({ sub: 'usr_1', email: 'a@b.c' });
+    const foreign = await other.signAccessToken({ sub: 'usr_1', phoneMasked: '090****567' });
     await expect(service.verifyAccessToken(foreign)).rejects.toThrow(UnauthorizedException);
   });
 
@@ -88,18 +88,18 @@ describe('JwtTokenService', () => {
       JWT_PRIVATE_KEY: privateKey,
     });
 
-    const token = await service.signAccessToken({ sub: 'usr_rs', email: 'rs@b.c' });
+    const token = await service.signAccessToken({ sub: 'usr_rs', phoneMasked: '090****567' });
     await expect(service.verifyAccessToken(token)).resolves.toEqual(expect.objectContaining({ id: 'usr_rs' }));
 
     // Tấn công nhầm lẫn thuật toán: token HS256 ký bằng public key phải bị từ chối
     const hs = createService().jwtService;
-    const forged = await hs.signAsync({ sub: 'x', email: 'x@y.z' }, { secret: publicKey, algorithm: 'HS256' });
+    const forged = await hs.signAsync({ sub: 'x', phoneMasked: '090****567' }, { secret: publicKey, algorithm: 'HS256' });
     await expect(service.verifyAccessToken(forged)).rejects.toThrow(UnauthorizedException);
   });
 
   it('should report AUTH_TOKEN_EXPIRED for expired tokens', async () => {
     const { service } = createService();
-    const token = await service.signAccessToken({ sub: 'usr_1', email: 'a@b.c' }, '-10s');
+    const token = await service.signAccessToken({ sub: 'usr_1', phoneMasked: '090****567' }, '-10s');
 
     await expect(service.verifyAccessToken(token)).rejects.toMatchObject({
       response: expect.objectContaining({ errorCode: 'AUTH_TOKEN_EXPIRED' }),
@@ -109,24 +109,64 @@ describe('JwtTokenService', () => {
   it('should reject validly signed tokens with malformed claims or refresh-token type', async () => {
     const { service, jwtService } = createService();
 
-    const noEmail = await jwtService.signAsync({ sub: 'usr_1' });
-    await expect(service.verifyAccessToken(noEmail)).rejects.toMatchObject({
+    const badSession = await jwtService.signAsync({ sub: 'usr_1', sid: 'not-a-session-uuid' });
+    await expect(service.verifyAccessToken(badSession)).rejects.toMatchObject({
       response: expect.objectContaining({ message: 'Access token claims are malformed.' }),
     });
 
-    const badTenant = await jwtService.signAsync({ sub: 'usr_1', email: 'a@b.c', tenantId: 'not-a-uuid' });
+    const badTenant = await jwtService.signAsync({ sub: 'usr_1', phoneMasked: '090****567', tenantId: 'not-a-uuid' });
     await expect(service.verifyAccessToken(badTenant)).rejects.toThrow(UnauthorizedException);
 
-    const refresh = await jwtService.signAsync({ sub: 'usr_1', email: 'a@b.c', typ: 'refresh' });
+    const refresh = await jwtService.signAsync({ sub: 'usr_1', phoneMasked: '090****567', typ: 'refresh' });
     await expect(service.verifyAccessToken(refresh)).rejects.toMatchObject({
       response: expect.objectContaining({ message: 'Refresh tokens cannot be used to access the API.' }),
+    });
+  });
+
+  describe('session revocation (claim sid)', () => {
+    const SID = '22222222-2222-4222-8222-222222222222';
+
+    function withRevocations(revocations: { isRevoked: jest.Mock }) {
+      const config = new AppConfigService(configServiceFrom(validateEnv(BASE_ENV)));
+      const jwtService = new JwtService(buildJwtOptions(config));
+      const resolver = { resolve: jest.fn().mockResolvedValue([]) };
+      return new JwtTokenService(jwtService, config, resolver as any, revocations as any);
+    }
+
+    it('should reject a valid, unexpired token whose session was revoked, and expose the session id otherwise', async () => {
+      const revocations = { isRevoked: jest.fn().mockResolvedValue(false) };
+      const service = withRevocations(revocations);
+      const token = await service.signAccessToken({ sub: 'usr_1', sid: SID, phoneMasked: '090****567', tenantId: TENANT });
+
+      await expect(service.verifyAccessToken(token)).resolves.toMatchObject({ id: 'usr_1', sessionId: SID, phoneMasked: '090****567' });
+      expect(revocations.isRevoked).toHaveBeenCalledWith(SID);
+
+      revocations.isRevoked.mockResolvedValue(true);
+      await expect(service.verifyAccessToken(token)).rejects.toMatchObject({
+        response: expect.objectContaining({ errorCode: 'AUTH_SESSION_REVOKED' }),
+      });
+    });
+
+    it('should not consult the revocation store for tokens without a session (service / test tokens)', async () => {
+      const revocations = { isRevoked: jest.fn().mockResolvedValue(true) };
+      const service = withRevocations(revocations);
+      const token = await service.signAccessToken({ sub: 'svc_1', tenantId: TENANT });
+      await expect(service.verifyAccessToken(token)).resolves.toMatchObject({ id: 'svc_1' });
+      expect(revocations.isRevoked).not.toHaveBeenCalled();
+    });
+
+    it('should fail closed when the revocation store is unavailable', async () => {
+      const revocations = { isRevoked: jest.fn().mockRejectedValue(new Error('redis down')) };
+      const service = withRevocations(revocations);
+      const token = await service.signAccessToken({ sub: 'usr_1', sid: SID, tenantId: TENANT });
+      await expect(service.verifyAccessToken(token)).rejects.toThrow('redis down');
     });
   });
 
   it('should resolve permission rules from the cache/loader when the token does not embed them', async () => {
     const rules = [{ resource: 'invoices', action: 'read', scope: 'own', effect: 'GRANT' }];
     const { service, resolver } = createService({}, rules);
-    const token = await service.signAccessToken({ sub: 'usr_lean', email: 'a@b.c', tenantId: TENANT, roles: ['TENANT'] });
+    const token = await service.signAccessToken({ sub: 'usr_lean', phoneMasked: '090****567', tenantId: TENANT, roles: ['TENANT'] });
 
     await expect(service.verifyAccessToken(token)).resolves.toEqual(expect.objectContaining({ rules }));
     expect(resolver.resolve).toHaveBeenCalledWith('usr_lean', TENANT, ['TENANT']);

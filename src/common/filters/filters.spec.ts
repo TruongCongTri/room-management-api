@@ -1,4 +1,4 @@
-import { ArgumentsHost, BadRequestException, HttpStatus, UnauthorizedException } from '@nestjs/common';
+import { ArgumentsHost, BadRequestException, HttpException, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { HttpExceptionFilter } from './http-exception.filter';
 import { AllExceptionsFilter } from './all-exceptions.filter';
@@ -27,6 +27,7 @@ describe('Common Exception Filters (Enterprise RFC 7807)', () => {
     mockResponse = {
       status: jest.fn().mockReturnThis(),
       json: jest.fn().mockReturnThis(),
+      setHeader: jest.fn(),
     };
 
     mockRequest = {
@@ -73,6 +74,24 @@ describe('Common Exception Filters (Enterprise RFC 7807)', () => {
       );
       // 401 là nhiễu thường gặp (token hết hạn, bot) → mức debug
       expect(logger.debug).toHaveBeenCalled();
+    });
+
+    it('should send Retry-After and pass the wait time to the translation for lock / OTP limits', () => {
+      const i18n: any = { has: () => true, translate: jest.fn().mockReturnValue('Thử lại sau 900 giây.') };
+      new HttpExceptionFilter(contextService, logger, i18n).catch(
+        new HttpException({ errorCode: 'AUTH_ACCOUNT_LOCKED', message: 'locked', retryAfterSeconds: 899.2 }, HttpStatus.LOCKED),
+        mockHost,
+      );
+      expect(mockResponse.setHeader).toHaveBeenCalledWith('Retry-After', '900');
+      expect(i18n.translate).toHaveBeenCalledWith('AUTH_ACCOUNT_LOCKED', { retryAfter: '900' });
+      expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.LOCKED);
+      // Không lộ trường nội bộ retryAfterSeconds trong body
+      expect(mockResponse.json.mock.calls[0][0]).not.toHaveProperty('retryAfterSeconds');
+    });
+
+    it('should not invent a Retry-After header for errors without a wait time', () => {
+      filter.catch(new BadRequestException({ errorCode: 'AUTH_OTP_INVALID', message: 'bad code' }), mockHost);
+      expect(mockResponse.setHeader).not.toHaveBeenCalledWith('Retry-After', expect.anything());
     });
 
     it('should localize the user-facing message by errorCode and keep the developer detail', () => {

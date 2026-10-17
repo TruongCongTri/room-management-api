@@ -1,0 +1,73 @@
+export const ja: Record<string, string> = {
+  // 認証・認可
+  AUTH_UNAUTHORIZED: '認証資格情報が無効か、有効期限が切れています。',
+  AUTH_TOKEN_EXPIRED: 'セッションの有効期限が切れました。再度ログインしてください。',
+  AUTH_TOKEN_INVALID: 'アクセストークンが無効です。',
+  AUTH_FORBIDDEN_RESOURCE: 'この操作を実行する権限がありません。',
+  AUTH_TENANT_MISMATCH: 'アカウントが要求された組織に属していません。',
+  AUTH_CREDENTIALS_INVALID: 'ログイン情報が正しくありません。',
+  AUTH_SESSION_REVOKED: 'このセッションは無効化されました。',
+
+  // 入力データ
+  REQ_VALIDATION_ERROR: '送信されたデータが不正です。',
+  REQ_MALFORMED_PAYLOAD: 'リクエストデータの形式が正しくありません。',
+  REQ_MISSING_IDEMPOTENCY_KEY: 'この操作には Idempotency-Key ヘッダーが必要です。',
+  REQ_IDEMPOTENCY_PAYLOAD_MISMATCH: 'この Idempotency-Key は別のリクエストで使用済みです。',
+  REQ_INVALID_UUID: '識別子が有効な UUID ではありません。',
+  REQ_INVALID_DATE_RANGE: '日付が無効です。',
+  REQ_TIMEOUT: 'リクエストの処理がタイムアウトしました。もう一度お試しください。',
+  REQ_PAYLOAD_TOO_LARGE: '送信データが許容サイズを超えています。',
+
+  // リソース・同時実行
+  RES_NOT_FOUND: 'リクエストされたリソースが見つかりませんでした。',
+  RES_ALREADY_EXISTS: 'データは既に存在します。',
+  RES_CONFLICT: 'リクエストがリソースの現在の状態と競合しています。',
+  RES_CONCURRENCY_CONFLICT: 'データが他のユーザーによって更新されました。再読み込みしてください。',
+  RES_LOCKED: 'リソースは別のトランザクションで処理中です。',
+  RES_FEATURE_DISABLED: 'この機能はまだ有効になっていません。',
+
+  // データ制約
+  DB_UNIQUE_CONSTRAINT_VIOLATION: '同じ一意の値を持つデータが既に存在します。',
+  DB_FOREIGN_KEY_VIOLATION: '参照先のデータが存在しません。',
+  DB_CHECK_CONSTRAINT_VIOLATION: 'データが業務上の制約に違反しています。',
+
+  // 賃貸業務
+  BIZ_ROOM_NOT_AVAILABLE: 'この部屋は空室ではありません。',
+  BIZ_ROOM_HAS_ACTIVE_CONTRACT: 'この部屋には有効な賃貸契約が既にあります。',
+  BIZ_CONTRACT_NOT_ACTIVE: '契約は有効ではありません。',
+  BIZ_OCCUPANT_LIMIT_EXCEEDED: '入居者数が部屋の上限を超えています。',
+  BIZ_OCCUPANT_ID_DOCUMENT_REQUIRED: '入居者全員の身分証番号（CCCD／個人識別番号）またはパスポートが必要です。',
+  BIZ_OCCUPANT_ALREADY_ACTIVE: 'この方は既にこの部屋、または別の部屋に入居しています。',
+  BIZ_OCCUPANT_NOT_ACTIVE: 'この方は既に退去しています。',
+  BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE: '指定された方は契約名義人になれません（18歳以上、身分証と個人データ同意が必要です）。',
+  BIZ_PRIMARY_HOLDER_SUCCESSOR_REQUIRED: '契約名義人になれる入居者が残っていません。新しい名義人を追加してください。',
+  BIZ_LAST_OCCUPANT_REQUIRES_CHECKOUT: '名義人が最後の入居者です。退去精算と敷金精算を行ってください。',
+  BIZ_TENANT_ID_CARD_DUPLICATE: 'この身分証/パスポート番号は他の入居者に登録済みです。',
+  BIZ_PDPL_CONSENT_REQUIRED: '入居者は個人データ処理への同意が必要です（法律91/2025/QH15）。',
+  BIZ_METER_READING_DECREASED: '新しいメーター値が前回より小さくなっています。メーター交換・一巡の場合はリセットとして登録してください。',
+  BIZ_METER_READING_DUPLICATE: 'この部屋は今期のメーター値が登録済みです。',
+  BIZ_METER_PHOTO_REQUIRED: 'メーター値の登録前に電気・水道メーターの写真が必要です。',
+  BIZ_FINAL_METER_READING_REQUIRED: '退去精算の前に最終メーター値の登録が必要です。',
+  BIZ_INVOICE_ALREADY_ISSUED: '今期の請求書は既に発行されています。',
+  BIZ_INVOICE_ALREADY_PAID: 'この請求書は支払い済みです。',
+  BIZ_CHECKOUT_ALREADY_SETTLED: 'この契約の退去精算は完了しています。',
+  BIZ_CHECKOUT_DATE_INVALID: '退去日が契約期間外です。',
+  BIZ_DEPOSIT_ALREADY_SETTLED: '敷金は既に精算済みです。',
+  BIZ_PAYMENT_FAILED: '決済に失敗しました。',
+  BIZ_PAYMENT_AMOUNT_MISMATCH: '支払金額が請求書と一致しません。',
+  BIZ_TAX_PERIOD_INVALID: '申告期間が無効です。',
+  BIZ_COMPLIANCE_DOCUMENT_EXPIRED: 'コンプライアンス書類（消防・居住登録）の期限が切れています。',
+
+  // セキュリティ・トラフィック
+  SEC_RATE_LIMIT_EXCEEDED: 'リクエストが多すぎます。{{retryAfter}} 秒後に再試行してください。',
+  SEC_CORS_VIOLATION: 'このアクセス元は許可されていません。',
+  SEC_DECRYPTION_FAILED: 'データを復号できませんでした。',
+
+  // パートナー・システム
+  EXT_PARTNER_TIMEOUT: 'パートナーサービスの応答が遅れています。しばらくしてから再試行してください。',
+  EXT_CIRCUIT_OPEN: 'パートナーサービスが一時的に利用できません。',
+  EXT_BULKHEAD_LIMIT_REACHED: 'システムが混雑しています。しばらくしてから再試行してください。',
+  SYS_INTERNAL_ERROR: '予期せぬ内部システムエラーが発生しました。',
+  SYS_DATABASE_ERROR: 'データアクセスエラーが発生しました。しばらくしてから再試行してください。',
+  SYS_SERVICE_UNAVAILABLE: 'サービスは一時的に利用できません。',
+};

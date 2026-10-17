@@ -1,0 +1,73 @@
+export const en: Record<string, string> = {
+  // Authentication & authorization
+  AUTH_UNAUTHORIZED: 'Authentication credentials are invalid or expired.',
+  AUTH_TOKEN_EXPIRED: 'Your session has expired. Please sign in again.',
+  AUTH_TOKEN_INVALID: 'The access token is invalid.',
+  AUTH_FORBIDDEN_RESOURCE: 'You do not have permission to perform this action.',
+  AUTH_TENANT_MISMATCH: 'Your account does not belong to the requested organization.',
+  AUTH_CREDENTIALS_INVALID: 'Incorrect sign-in credentials.',
+  AUTH_SESSION_REVOKED: 'This session has been revoked.',
+
+  // Request input
+  REQ_VALIDATION_ERROR: 'The submitted data is invalid.',
+  REQ_MALFORMED_PAYLOAD: 'The request payload is malformed.',
+  REQ_MISSING_IDEMPOTENCY_KEY: 'An Idempotency-Key header is required for this operation.',
+  REQ_IDEMPOTENCY_PAYLOAD_MISMATCH: 'This Idempotency-Key was already used with a different request.',
+  REQ_INVALID_UUID: 'The identifier is not a valid UUID.',
+  REQ_INVALID_DATE_RANGE: 'The date is invalid.',
+  REQ_TIMEOUT: 'The request took too long to process. Please try again.',
+  REQ_PAYLOAD_TOO_LARGE: 'The request payload exceeds the allowed size.',
+
+  // Resources & concurrency
+  RES_NOT_FOUND: 'The requested resource was not found.',
+  RES_ALREADY_EXISTS: 'The record already exists.',
+  RES_CONFLICT: 'The request conflicts with the current state of the resource.',
+  RES_CONCURRENCY_CONFLICT: 'The record was just updated by someone else. Please reload.',
+  RES_LOCKED: 'The resource is being processed by another transaction.',
+  RES_FEATURE_DISABLED: 'This feature is not enabled yet.',
+
+  // Data constraints
+  DB_UNIQUE_CONSTRAINT_VIOLATION: 'A record with the same unique value already exists.',
+  DB_FOREIGN_KEY_VIOLATION: 'A referenced record does not exist.',
+  DB_CHECK_CONSTRAINT_VIOLATION: 'The data violates a business constraint.',
+
+  // Room rental business rules
+  BIZ_ROOM_NOT_AVAILABLE: 'The room is not available.',
+  BIZ_ROOM_HAS_ACTIVE_CONTRACT: 'The room already has an active lease contract.',
+  BIZ_CONTRACT_NOT_ACTIVE: 'The contract is not active.',
+  BIZ_OCCUPANT_LIMIT_EXCEEDED: 'The number of occupants exceeds the room limit.',
+  BIZ_OCCUPANT_ID_DOCUMENT_REQUIRED: 'Every occupant must provide a CCCD / personal ID number or passport.',
+  BIZ_OCCUPANT_ALREADY_ACTIVE: 'This person already lives in this room or is registered in another room.',
+  BIZ_OCCUPANT_NOT_ACTIVE: 'This person no longer lives in the room.',
+  BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE: 'The designated person cannot hold the contract (must be an adult with an ID document and personal data consent).',
+  BIZ_PRIMARY_HOLDER_SUCCESSOR_REQUIRED: 'No remaining occupant is eligible to hold the contract. Please add a new contract holder.',
+  BIZ_LAST_OCCUPANT_REQUIRES_CHECKOUT: 'The contract holder is the last occupant: please perform a checkout and deposit settlement.',
+  BIZ_TENANT_ID_CARD_DUPLICATE: 'This citizen ID / passport is already registered to another tenant.',
+  BIZ_PDPL_CONSENT_REQUIRED: 'The tenant must accept the personal data processing terms (Law 91/2025/QH15).',
+  BIZ_METER_READING_DECREASED: 'The new reading is lower than the previous one. Mark the meter as reset if it was replaced or rolled over.',
+  BIZ_METER_READING_DUPLICATE: 'This room already has a reading for the period.',
+  BIZ_METER_PHOTO_REQUIRED: 'Electricity and water meter photos are required before submitting readings.',
+  BIZ_FINAL_METER_READING_REQUIRED: 'A final meter reading is required before checkout settlement.',
+  BIZ_INVOICE_ALREADY_ISSUED: 'The invoice for this period has already been issued.',
+  BIZ_INVOICE_ALREADY_PAID: 'The invoice has already been paid.',
+  BIZ_CHECKOUT_ALREADY_SETTLED: 'The checkout for this contract has already been settled.',
+  BIZ_CHECKOUT_DATE_INVALID: 'The checkout date is outside the contract term.',
+  BIZ_DEPOSIT_ALREADY_SETTLED: 'The deposit has already been settled.',
+  BIZ_PAYMENT_FAILED: 'The payment was not successful.',
+  BIZ_PAYMENT_AMOUNT_MISMATCH: 'The payment amount does not match the invoice.',
+  BIZ_TAX_PERIOD_INVALID: 'The tax period is invalid.',
+  BIZ_COMPLIANCE_DOCUMENT_EXPIRED: 'A compliance record (fire safety / residence) has expired.',
+
+  // Security & traffic
+  SEC_RATE_LIMIT_EXCEEDED: 'Too many requests. Please retry in {{retryAfter}} seconds.',
+  SEC_CORS_VIOLATION: 'The request origin is not allowed.',
+  SEC_DECRYPTION_FAILED: 'The data could not be decrypted.',
+
+  // Partners & system
+  EXT_PARTNER_TIMEOUT: 'A partner service responded too slowly. Please try again later.',
+  EXT_CIRCUIT_OPEN: 'A partner service is temporarily unavailable.',
+  EXT_BULKHEAD_LIMIT_REACHED: 'The system is under heavy load. Please try again later.',
+  SYS_INTERNAL_ERROR: 'An unexpected internal system error occurred.',
+  SYS_DATABASE_ERROR: 'A data access error occurred. Please try again later.',
+  SYS_SERVICE_UNAVAILABLE: 'The service is temporarily unavailable.',
+};

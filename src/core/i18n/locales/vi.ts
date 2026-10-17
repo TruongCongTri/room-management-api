@@ -1,0 +1,73 @@
+export const vi: Record<string, string> = {
+  // Xác thực & phân quyền
+  AUTH_UNAUTHORIZED: 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ.',
+  AUTH_TOKEN_EXPIRED: 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.',
+  AUTH_TOKEN_INVALID: 'Mã xác thực không hợp lệ.',
+  AUTH_FORBIDDEN_RESOURCE: 'Bạn không có quyền thực hiện thao tác này.',
+  AUTH_TENANT_MISMATCH: 'Tài khoản không thuộc tổ chức được yêu cầu.',
+  AUTH_CREDENTIALS_INVALID: 'Thông tin đăng nhập không chính xác.',
+  AUTH_SESSION_REVOKED: 'Phiên đăng nhập đã bị thu hồi.',
+
+  // Dữ liệu đầu vào
+  REQ_VALIDATION_ERROR: 'Dữ liệu gửi lên không hợp lệ.',
+  REQ_MALFORMED_PAYLOAD: 'Định dạng dữ liệu gửi lên không đúng.',
+  REQ_MISSING_IDEMPOTENCY_KEY: 'Thiếu header Idempotency-Key cho thao tác nhạy cảm.',
+  REQ_IDEMPOTENCY_PAYLOAD_MISMATCH: 'Idempotency-Key đã được dùng cho một yêu cầu khác.',
+  REQ_INVALID_UUID: 'Mã định danh không đúng định dạng UUID.',
+  REQ_INVALID_DATE_RANGE: 'Ngày tháng không hợp lệ.',
+  REQ_TIMEOUT: 'Yêu cầu xử lý quá thời gian cho phép, vui lòng thử lại.',
+  REQ_PAYLOAD_TOO_LARGE: 'Dữ liệu gửi lên vượt quá kích thước cho phép.',
+
+  // Tài nguyên & đồng thời
+  RES_NOT_FOUND: 'Tài nguyên được yêu cầu không tồn tại trên hệ thống.',
+  RES_ALREADY_EXISTS: 'Dữ liệu đã tồn tại.',
+  RES_CONFLICT: 'Yêu cầu xung đột với trạng thái hiện tại của tài nguyên.',
+  RES_CONCURRENCY_CONFLICT: 'Dữ liệu vừa được cập nhật bởi người khác, vui lòng tải lại.',
+  RES_LOCKED: 'Tài nguyên đang được xử lý bởi một giao dịch khác.',
+  RES_FEATURE_DISABLED: 'Tính năng này hiện chưa được kích hoạt.',
+
+  // Ràng buộc dữ liệu
+  DB_UNIQUE_CONSTRAINT_VIOLATION: 'Dữ liệu bị trùng với một bản ghi đã tồn tại.',
+  DB_FOREIGN_KEY_VIOLATION: 'Dữ liệu tham chiếu không tồn tại.',
+  DB_CHECK_CONSTRAINT_VIOLATION: 'Dữ liệu vi phạm ràng buộc nghiệp vụ.',
+
+  // Nghiệp vụ cho thuê phòng
+  BIZ_ROOM_NOT_AVAILABLE: 'Phòng hiện không còn trống.',
+  BIZ_ROOM_HAS_ACTIVE_CONTRACT: 'Phòng đã có hợp đồng thuê đang hiệu lực.',
+  BIZ_CONTRACT_NOT_ACTIVE: 'Hợp đồng chưa có hiệu lực hoặc đã kết thúc.',
+  BIZ_OCCUPANT_LIMIT_EXCEEDED: 'Số người ở vượt quá giới hạn của phòng.',
+  BIZ_OCCUPANT_ID_DOCUMENT_REQUIRED: 'Mỗi người ở phải có CCCD / số định danh cá nhân hoặc hộ chiếu.',
+  BIZ_OCCUPANT_ALREADY_ACTIVE: 'Người này đang ở trong phòng (hoặc đang đăng ký ở phòng khác).',
+  BIZ_OCCUPANT_NOT_ACTIVE: 'Người này không còn ở trong phòng.',
+  BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE: 'Người được chỉ định không đủ điều kiện đứng tên hợp đồng (đủ 18 tuổi, có giấy tờ định danh và đã đồng ý xử lý dữ liệu cá nhân).',
+  BIZ_PRIMARY_HOLDER_SUCCESSOR_REQUIRED: 'Không còn người ở nào đủ điều kiện đứng tên hợp đồng. Vui lòng bổ sung người đứng tên mới.',
+  BIZ_LAST_OCCUPANT_REQUIRES_CHECKOUT: 'Người đứng tên là người ở cuối cùng: vui lòng làm thủ tục trả phòng và quyết toán tiền cọc.',
+  BIZ_TENANT_ID_CARD_DUPLICATE: 'Số CCCD/Hộ chiếu đã được đăng ký cho khách thuê khác.',
+  BIZ_PDPL_CONSENT_REQUIRED: 'Khách thuê cần đồng ý điều khoản xử lý dữ liệu cá nhân (Luật 91/2025/QH15).',
+  BIZ_METER_READING_DECREASED: 'Chỉ số mới thấp hơn chỉ số kỳ trước. Nếu đồng hồ đã được thay/quay vòng, vui lòng đánh dấu reset đồng hồ.',
+  BIZ_METER_READING_DUPLICATE: 'Phòng đã được ghi chỉ số trong kỳ này.',
+  BIZ_METER_PHOTO_REQUIRED: 'Cần tải ảnh đồng hồ điện và nước trước khi ghi chỉ số.',
+  BIZ_FINAL_METER_READING_REQUIRED: 'Cần ghi chỉ số chốt cuối trước khi quyết toán trả phòng.',
+  BIZ_INVOICE_ALREADY_ISSUED: 'Hóa đơn của kỳ này đã được phát hành.',
+  BIZ_INVOICE_ALREADY_PAID: 'Hóa đơn đã được thanh toán.',
+  BIZ_CHECKOUT_ALREADY_SETTLED: 'Hợp đồng đã được quyết toán trả phòng.',
+  BIZ_CHECKOUT_DATE_INVALID: 'Ngày trả phòng không hợp lệ so với thời hạn hợp đồng.',
+  BIZ_DEPOSIT_ALREADY_SETTLED: 'Tiền cọc đã được quyết toán.',
+  BIZ_PAYMENT_FAILED: 'Thanh toán không thành công.',
+  BIZ_PAYMENT_AMOUNT_MISMATCH: 'Số tiền thanh toán không khớp với hóa đơn.',
+  BIZ_TAX_PERIOD_INVALID: 'Kỳ kê khai thuế không hợp lệ.',
+  BIZ_COMPLIANCE_DOCUMENT_EXPIRED: 'Hồ sơ tuân thủ (PCCC/tạm trú) đã hết hạn.',
+
+  // Bảo mật & lưu lượng
+  SEC_RATE_LIMIT_EXCEEDED: 'Bạn thao tác quá nhanh, vui lòng thử lại sau {{retryAfter}} giây.',
+  SEC_CORS_VIOLATION: 'Nguồn truy cập không được phép.',
+  SEC_DECRYPTION_FAILED: 'Không thể giải mã dữ liệu.',
+
+  // Đối tác & hệ thống
+  EXT_PARTNER_TIMEOUT: 'Đối tác phản hồi quá chậm, vui lòng thử lại sau.',
+  EXT_CIRCUIT_OPEN: 'Dịch vụ đối tác đang tạm gián đoạn.',
+  EXT_BULKHEAD_LIMIT_REACHED: 'Hệ thống đang quá tải, vui lòng thử lại sau.',
+  SYS_INTERNAL_ERROR: 'Đã có lỗi hệ thống không mong muốn xảy ra.',
+  SYS_DATABASE_ERROR: 'Lỗi truy xuất dữ liệu, vui lòng thử lại sau.',
+  SYS_SERVICE_UNAVAILABLE: 'Dịch vụ tạm thời không khả dụng.',
+};

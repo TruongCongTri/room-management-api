@@ -1,0 +1,70 @@
+# =============================================================================
+# Hạ tầng phát triển cục bộ cho room-management-api
+#
+#   docker compose up -d                          # Redis (bắt buộc)
+#   docker compose --profile postgres up -d       # + PostgreSQL 17 (nếu máy chưa cài PostgreSQL)
+#   docker compose --profile observability up -d  # + Jaeger (OTLP :4318, UI http://localhost:16686)
+#
+# Cổng chỉ mở trên loopback IPv4 + IPv6 (127.0.0.1 / ::1), không lộ ra mạng LAN.
+# PostgreSQL trong Docker dùng cổng 5433 để không đụng PostgreSQL cài sẵn trên máy (5432).
+# =============================================================================
+name: room-management
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    container_name: room-management-redis
+    restart: unless-stopped
+    # noeviction: bắt buộc cho BullMQ (Redis không được tự xóa key của job khi đầy bộ nhớ)
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory-policy
+      - noeviction
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
+      - "[::1]:${REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:17-alpine
+    container_name: room-management-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: room_management
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+      - "[::1]:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Tạo database kiểm thử + role ứng dụng tối thiểu quyền (NOSUPERUSER NOBYPASSRLS) cho RLS
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d room_management"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  jaeger:
+    profiles: ["observability"]
+    image: jaegertracing/jaeger:latest
+    container_name: room-management-jaeger
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:16686:16686" # UI
+      - "127.0.0.1:4317:4317" # OTLP gRPC
+      - "127.0.0.1:4318:4318" # OTLP HTTP (OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318)
+
+volumes:
+  redis-data:
+  postgres-data:

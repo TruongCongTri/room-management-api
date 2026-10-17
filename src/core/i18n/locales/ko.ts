@@ -1,0 +1,73 @@
+export const ko: Record<string, string> = {
+  // 인증 및 권한
+  AUTH_UNAUTHORIZED: '인증 정보가 유효하지 않거나 만료되었습니다.',
+  AUTH_TOKEN_EXPIRED: '세션이 만료되었습니다. 다시 로그인해 주세요.',
+  AUTH_TOKEN_INVALID: '액세스 토큰이 유효하지 않습니다.',
+  AUTH_FORBIDDEN_RESOURCE: '이 작업을 수행할 권한이 없습니다.',
+  AUTH_TENANT_MISMATCH: '계정이 요청한 조직에 속하지 않습니다.',
+  AUTH_CREDENTIALS_INVALID: '로그인 정보가 올바르지 않습니다.',
+  AUTH_SESSION_REVOKED: '이 세션은 철회되었습니다.',
+
+  // 입력 데이터
+  REQ_VALIDATION_ERROR: '전송된 데이터가 유효하지 않습니다.',
+  REQ_MALFORMED_PAYLOAD: '요청 데이터 형식이 올바르지 않습니다.',
+  REQ_MISSING_IDEMPOTENCY_KEY: '이 작업에는 Idempotency-Key 헤더가 필요합니다.',
+  REQ_IDEMPOTENCY_PAYLOAD_MISMATCH: '이 Idempotency-Key는 다른 요청에서 이미 사용되었습니다.',
+  REQ_INVALID_UUID: '식별자가 유효한 UUID가 아닙니다.',
+  REQ_INVALID_DATE_RANGE: '날짜가 유효하지 않습니다.',
+  REQ_TIMEOUT: '요청 처리 시간이 초과되었습니다. 다시 시도해 주세요.',
+  REQ_PAYLOAD_TOO_LARGE: '전송된 데이터가 허용 크기를 초과합니다.',
+
+  // 리소스 및 동시성
+  RES_NOT_FOUND: '요청한 리소스를 찾을 수 없습니다.',
+  RES_ALREADY_EXISTS: '이미 존재하는 데이터입니다.',
+  RES_CONFLICT: '요청이 리소스의 현재 상태와 충돌합니다.',
+  RES_CONCURRENCY_CONFLICT: '다른 사용자가 데이터를 방금 수정했습니다. 새로 고침해 주세요.',
+  RES_LOCKED: '리소스가 다른 트랜잭션에서 처리 중입니다.',
+  RES_FEATURE_DISABLED: '이 기능은 아직 활성화되지 않았습니다.',
+
+  // 데이터 제약
+  DB_UNIQUE_CONSTRAINT_VIOLATION: '동일한 고유 값을 가진 데이터가 이미 존재합니다.',
+  DB_FOREIGN_KEY_VIOLATION: '참조하는 데이터가 존재하지 않습니다.',
+  DB_CHECK_CONSTRAINT_VIOLATION: '데이터가 업무 제약 조건을 위반했습니다.',
+
+  // 임대 업무
+  BIZ_ROOM_NOT_AVAILABLE: '이 방은 현재 공실이 아닙니다.',
+  BIZ_ROOM_HAS_ACTIVE_CONTRACT: '이 방에는 이미 유효한 임대 계약이 있습니다.',
+  BIZ_CONTRACT_NOT_ACTIVE: '계약이 유효하지 않습니다.',
+  BIZ_OCCUPANT_LIMIT_EXCEEDED: '거주 인원이 방의 허용 인원을 초과했습니다.',
+  BIZ_OCCUPANT_ID_DOCUMENT_REQUIRED: '모든 거주자는 신분증 번호(CCCD/개인식별번호) 또는 여권이 필요합니다.',
+  BIZ_OCCUPANT_ALREADY_ACTIVE: '이 사람은 이미 이 방 또는 다른 방에 거주 중입니다.',
+  BIZ_OCCUPANT_NOT_ACTIVE: '이 사람은 더 이상 이 방에 거주하지 않습니다.',
+  BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE: '지정된 사람은 계약 명의자가 될 수 없습니다(성인, 신분증 및 개인정보 처리 동의 필요).',
+  BIZ_PRIMARY_HOLDER_SUCCESSOR_REQUIRED: '계약 명의자가 될 수 있는 거주자가 없습니다. 새 명의자를 추가해 주세요.',
+  BIZ_LAST_OCCUPANT_REQUIRES_CHECKOUT: '명의자가 마지막 거주자입니다. 퇴실 및 보증금 정산을 진행해 주세요.',
+  BIZ_TENANT_ID_CARD_DUPLICATE: '이 신분증/여권 번호는 이미 다른 임차인에게 등록되어 있습니다.',
+  BIZ_PDPL_CONSENT_REQUIRED: '임차인은 개인정보 처리 약관에 동의해야 합니다(법률 91/2025/QH15).',
+  BIZ_METER_READING_DECREASED: '새 계량기 값이 이전 값보다 작습니다. 계량기를 교체했거나 한 바퀴 돌았다면 리셋으로 표시해 주세요.',
+  BIZ_METER_READING_DUPLICATE: '이 방은 이번 기간의 계량기 값이 이미 등록되었습니다.',
+  BIZ_METER_PHOTO_REQUIRED: '계량기 값을 등록하기 전에 전기·수도 계량기 사진이 필요합니다.',
+  BIZ_FINAL_METER_READING_REQUIRED: '퇴실 정산 전에 최종 계량기 값을 등록해야 합니다.',
+  BIZ_INVOICE_ALREADY_ISSUED: '이번 기간의 청구서가 이미 발행되었습니다.',
+  BIZ_INVOICE_ALREADY_PAID: '이미 결제된 청구서입니다.',
+  BIZ_CHECKOUT_ALREADY_SETTLED: '이 계약의 퇴실 정산이 이미 완료되었습니다.',
+  BIZ_CHECKOUT_DATE_INVALID: '퇴실일이 계약 기간을 벗어났습니다.',
+  BIZ_DEPOSIT_ALREADY_SETTLED: '보증금이 이미 정산되었습니다.',
+  BIZ_PAYMENT_FAILED: '결제에 실패했습니다.',
+  BIZ_PAYMENT_AMOUNT_MISMATCH: '결제 금액이 청구서와 일치하지 않습니다.',
+  BIZ_TAX_PERIOD_INVALID: '신고 기간이 올바르지 않습니다.',
+  BIZ_COMPLIANCE_DOCUMENT_EXPIRED: '컴플라이언스 서류(소방·거주 등록)가 만료되었습니다.',
+
+  // 보안 및 트래픽
+  SEC_RATE_LIMIT_EXCEEDED: '요청이 너무 많습니다. {{retryAfter}}초 후에 다시 시도해 주세요.',
+  SEC_CORS_VIOLATION: '허용되지 않은 접근 출처입니다.',
+  SEC_DECRYPTION_FAILED: '데이터를 복호화할 수 없습니다.',
+
+  // 파트너 및 시스템
+  EXT_PARTNER_TIMEOUT: '파트너 서비스의 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.',
+  EXT_CIRCUIT_OPEN: '파트너 서비스를 일시적으로 사용할 수 없습니다.',
+  EXT_BULKHEAD_LIMIT_REACHED: '시스템 부하가 높습니다. 잠시 후 다시 시도해 주세요.',
+  SYS_INTERNAL_ERROR: '예기치 않은 내부 시스템 오류가 발생했습니다.',
+  SYS_DATABASE_ERROR: '데이터 접근 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+  SYS_SERVICE_UNAVAILABLE: '서비스를 일시적으로 사용할 수 없습니다.',
+};

@@ -306,6 +306,20 @@ describe('AuditLogModule (Enterprise Audit Architecture)', () => {
       );
     });
 
+    it('should not write unattributable rows for Repository.update() (no old row, no primary key)', async () => {
+      await subscriber.afterUpdate({ metadata: metadataFor(Contract), manager: {}, databaseEntity: undefined, entity: { price: 1 } } as any);
+      expect(writer.recordInTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should skip Repository.update() of technical or excluded columns only, and keep attributable ones', async () => {
+      @Auditable({ resource: 'users', exclude: ['lastLoginAt'] })
+      class User {}
+      await subscriber.afterUpdate({ metadata: metadataFor(User), manager: {}, databaseEntity: undefined, entity: { id: 'u1', lastLoginAt: new Date(), updatedAt: new Date() } } as any);
+      expect(writer.recordInTransaction).not.toHaveBeenCalled();
+      await subscriber.afterUpdate({ metadata: metadataFor(Contract), manager: {}, databaseEntity: undefined, entity: { id: 'c1', price: 2 } } as any);
+      expect(writer.recordInTransaction).toHaveBeenCalledWith({}, expect.objectContaining({ resourceId: 'c1', action: AuditAction.UPDATE }));
+    });
+
     it('should ignore entities without @Auditable()', async () => {
       await subscriber.afterInsert({ metadata: metadataFor(OutboxRow), manager: {}, entity: { id: 'x' } } as any);
       expect(writer.recordInTransaction).not.toHaveBeenCalled();

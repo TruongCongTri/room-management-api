@@ -7,6 +7,7 @@ import { IdentityModule } from './modules/identity/identity.module';
 import { PropertiesModule } from './modules/properties/properties.module';
 import { AssetsModule } from './modules/assets/assets.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
+import { ContractsModule } from './modules/contracts/contracts.module';
 
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -46,6 +47,7 @@ import { CustomValidationPipe } from './common/pipes/validation.pipe';
     PropertiesModule,
     AssetsModule,
     TenantsModule,
+    ContractsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

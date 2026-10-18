@@ -7,6 +7,7 @@ import { REFERENCE_DATA_SEEDS } from './reference-data.seed';
 import { devAccountsSeed } from '../../../modules/identity/seeds/dev-accounts.seed';
 import { devPropertiesSeed } from '../../../modules/properties/seeds/dev-properties.seed';
 import { devTenantsSeed } from '../../../modules/tenants/seeds/dev-tenants.seed';
+import { devContractsSeed } from '../../../modules/contracts/seeds/dev-contracts.seed';
 
-// Thứ tự: dữ liệu tham chiếu → tòa nhà / phòng (FK user_building_access → buildings) → tài khoản mẫu → hồ sơ người ở
-export const SEEDS: DatabaseSeed[] = [...REFERENCE_DATA_SEEDS, devPropertiesSeed, devAccountsSeed, devTenantsSeed];
+// Thứ tự: dữ liệu tham chiếu → tòa nhà / phòng (FK user_building_access → buildings) → tài khoản mẫu → hồ sơ người ở → hợp đồng
+export const SEEDS: DatabaseSeed[] = [...REFERENCE_DATA_SEEDS, devPropertiesSeed, devAccountsSeed, devTenantsSeed, devContractsSeed];

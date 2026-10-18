@@ -38,6 +38,13 @@ export class UsersController {
     return this.users.list(actor, query);
   }
 
+  @Get(':id')
+  @RequirePermissions({ resource: RentalResource.USERS, action: Action.READ, scope: Scope.GLOBAL })
+  @ApiOperation({ summary: "One account (staff or tenant) of the landlord's buildings" })
+  get(@CurrentUser() actor: RequestUserContext, @Param('id', ParseUUIDStrictPipe) id: string) {
+    return this.users.getById(actor, id);
+  }
+
   @Patch(':id')
   @RequirePermissions({ resource: RentalResource.USERS, action: Action.UPDATE, scope: Scope.GLOBAL })
   @ApiOperation({ summary: "Change a staff account's roles, buildings or status (landlord only)" })

@@ -141,6 +141,10 @@ tags:
 
     description: Lease activation, shared occupancy (every occupant's CCCD & residence), contract-holder transfer, extra fees, and deposit ledger\[cite: 3, 5, 6\]
 
+  - name: Service Catalogue
+
+    description: Per-building extra services (Wi-Fi, parking per vehicle type, sanitation per person) used by contracts
+
   \- name: Metering (Guard Mobile Workflow)
 
     description: Missing room checklist, zero-proxy S3 Presigned PUT URLs, and manual meter ingestion\[cite: 2, 3, 5, 7\]
@@ -490,6 +494,27 @@ paths:
         '403': { $ref: '#/components/responses/ForbiddenError' }
 
   /users/{id}:
+    get:
+      tags: [Identity & Authentication]
+      summary: One account (staff or tenant) of the landlord's buildings
+      description: |
+        `users:read:global` (landlord). An account sharing no building with the caller → `404` (never reveals that it exists).
+        Building ids outside the caller's buildings are not listed.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Account
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UserDto' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
     patch:
       tags: [Identity & Authentication]
       summary: Change a staff account's roles, buildings or status (landlord only)
@@ -1299,6 +1324,32 @@ paths:
         '409': { $ref: '#/components/responses/ConflictError' }
 
   /assets/room-assignments:
+    get:
+      tags: [Assets & Furniture Catalog]
+      summary: Installed units of the building (inventory, QR / serial search)
+      description: |
+        - `assets:read:department`. Filters combine; ordered by room number, then serial; paged.
+        - `serialNumber` matches any part of the serial (case-insensitive; `_` and `%` are literal).
+        - `rentedUnderContractId` = the draft or active contract renting the unit (it cannot be moved or removed meanwhile).
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: roomId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: assetId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: serialNumber, in: query, required: false, schema: { type: string, minLength: 2, maxLength: 100 } }
+        - { name: conditionGrade, in: query, required: false, schema: { type: string, enum: [GRADE_A_NEW, GRADE_B_GOOD, GRADE_C_FAIR, BROKEN] } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: Installed units
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/RoomAssetDto' } }
     post:
       tags: [Assets & Furniture Catalog]
       summary: Install a serial-numbered appliance or furniture item in a room
@@ -1543,52 +1594,65 @@ paths:
   \# \===========================================================================
 
   /contracts:
-
-    post:
-
-      tags: \[Contracts & 1-Month Deposit Escrow\]
-
-      summary: Create & activate a room lease contract with 1-month security deposit intake\[cite: 3, 5\]
-
+    get:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: List contracts of the building (paged)
       description: |
-
-        \- Acquires Redis Redlock (\`lock:room:contract:{roomId}\`) and enforces PostgreSQL partial unique index
-
-          \`idx\_unique\_active\_contract\_per\_room\` to prevent double-booking\[cite: 2, 4\].
-
-        \- Records the \*\*1-month security deposit (\`depositAmount\`)\*\* in \`deposit\_ledgers\` (\`status \= HELD\`)\[cite: 3, 5, 6\].
-
-        \- Registers the contract holder (`primaryTenantId`, role PRIMARY\_HOLDER) and every `coOccupants` entry in
-          `contract\_occupants` (total ≤ `room.maxOccupants`); each person gets residence status PENDING\_DECLARATION and
-          their own CT01. The EVN quota headcount starts at 0 and grows as residences become REGISTERED.
-
+        - `tenantId` matches the holder or anyone who lived in the room under the contract.
+        - `endingBefore` lists active contracts ending on or before a date (renewal follow-up).
+        - Ordered by start date (newest first), then contract code.
       parameters:
-
-        \- \$ref: '\#/components/parameters/BuildingIdHeader'
-
-        \- \$ref: '\#/components/parameters/IdempotencyKeyHeader'
-
-      requestBody:
-
-        required: true
-
-        content:
-
-          application/json:
-
-            schema:
-
-              \$ref: '\#/components/schemas/CreateContractDto'
-
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: status, in: query, required: false, schema: { type: string, enum: [DRAFT, ACTIVE, CANCELLED, TERMINATED, EXPIRED] } }
+        - { name: roomId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: tenantId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: q, in: query, required: false, description: 'Part of the contract code or room number, case-insensitive (wildcards literal)', schema: { type: string, minLength: 2, maxLength: 50 } }
+        - { name: endingBefore, in: query, required: false, schema: { type: string, format: date } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
       responses:
-
+        '200':
+          description: Contract summaries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/ContractSummaryDto' } }
+    post:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Create a DRAFT lease for a room (activation collects the deposit)
+      description: |
+        - Room must be AVAILABLE (or manually RESERVED) with no active or draft contract → becomes RESERVED.
+        - The holder (`primaryTenantId`) must be eligible on `startDate`: adult, ID document, consent (`422 BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE`).
+        - Holder + `coOccupants` ≤ `room.maxOccupants` (`409 BIZ_OCCUPANT_LIMIT_EXCEEDED`); each person needs a tenant profile.
+        - `monthlyRoomRent` defaults to the room's effective rent, `depositAmount` to one month of rent.
+        - Rented appliances must be installed in this room and not BROKEN; their fee is snapshotted.
+        - Contract code `HD-{YYYY}/{NNN}-{room}`, unique per building.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateContractDto' }
+      responses:
         '201':
-
-          description: Contract activated, 1-month deposit held in escrow, and room marked OCCUPIED\[cite: 5, 6\]
-
-        '409':
-
-          \$ref: '\#/components/responses/ConflictError'
+          description: Draft created, room RESERVED
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContractDto' }
+        '404': { description: Room, person or installed unit not found in this building }
+        '409': { $ref: '#/components/responses/ConflictError' }   # BIZ_ROOM_NOT_AVAILABLE, BIZ_OCCUPANT_LIMIT_EXCEEDED
+        '422': { description: BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE }
 
   /contracts/{id}/deposit-ledger:
 
@@ -1766,6 +1830,410 @@ paths:
                   - type: object
                     properties:
                       data: { type: array, items: { $ref: '#/components/schemas/HolderTransferResultDto' } }
+```
+
+```yaml
+  # ===========================================================================
+  # 5c. LEASE LIFECYCLE (decision D8): DRAFT → ACTIVE → RENEWED, TENANT VIEW
+  # ===========================================================================
+  /contracts/mine:
+    get:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: The contract the signed-in tenant currently lives under
+      description: |
+        Derived from the tenant's ACTIVE occupancy (`OCCUPANCY_SELF_SCOPE`); ends at move-out.
+        Staff without a tenant profile → `403`; a tenant not living in this building → `404 BIZ_NO_ACTIVE_ROOM`.
+        The holder's ID number is not included.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+      responses:
+        '200':
+          description: Own contract
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContractDto' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { description: BIZ_NO_ACTIVE_ROOM }
+
+  /contracts/{id}:
+    get:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Contract detail (terms, holder, deposit balance, appliances, services)
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Contract
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContractDto' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    patch:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Edit a DRAFT (terms, holder, planned co-occupants, rented appliances)
+      description: |
+        Draft only (`409 BIZ_CONTRACT_NOT_DRAFT`). The merged draft is re-validated as on creation.
+        Lists (`coOccupants`, `rentedRoomAssetIds`) replace the current ones. Optimistic `version`.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateDraftContractDto' }
+      responses:
+        '200': { description: Draft updated }
+        '409': { $ref: '#/components/responses/ConflictError' }   # BIZ_CONTRACT_NOT_DRAFT, RES_CONCURRENCY_CONFLICT
+        '422': { description: BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE }
+
+  /contracts/{id}/activate:
+    post:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Activate a draft — everybody moves in, 1-month deposit collected, room OCCUPIED
+      description: |
+        - Lock `lock:{buildingId}:room:contract:{roomId}` + partial unique index `idx_unique_active_contract_per_room`.
+        - Re-checks the holder, every planned person (not living in another room → else `409 BIZ_OCCUPANT_ALREADY_ACTIVE`),
+          capacity and the room; `pcccCommitmentSigned` must be true (`422 BIZ_PCCC_COMMITMENT_REQUIRED`); `endDate` not past (`400`).
+        - Occupants: holder PRIMARY_HOLDER, others CO_OCCUPANT, residence PENDING_DECLARATION each; channel by nationality.
+        - Deposit HELD + `INITIAL_COLLECTION` ledger row (holder as counterparty); appliance handover condition recorded.
+        - Adults with a phone get a TENANT account linked to their profile; new accounts receive an ACCOUNT_INVITATION SMS after commit
+          and activate with `POST /auth/otp/request` (ACTIVATE_ACCOUNT) + `POST /auth/activate`.
+        - Outbox: `contract.activated`, `occupant.moved_in` and `residence.declaration_required` per person,
+          `deposit.collected`, `room.status_changed`.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedActionDto' }
+      responses:
+        '201':
+          description: Contract ACTIVE
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContractDto' }
+        '409': { $ref: '#/components/responses/ConflictError' }   # BIZ_CONTRACT_NOT_DRAFT, BIZ_ROOM_HAS_ACTIVE_CONTRACT, BIZ_OCCUPANT_ALREADY_ACTIVE
+        '400': { description: 'REQ_VALIDATION_ERROR: the term already ended (endDate before today)' }
+        '422': { description: 'BIZ_PCCC_COMMITMENT_REQUIRED or BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE' }
+
+  /contracts/{id}/cancel:
+    post:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Cancel a draft (room back to AVAILABLE)
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedActionDto' }
+      responses:
+        '201': { description: Draft CANCELLED }
+        '409': { $ref: '#/components/responses/ConflictError' }   # BIZ_CONTRACT_NOT_DRAFT
+
+  /contracts/{id}/renew:
+    post:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Renew an active contract (new end date, optional new rent and deposit top-up)
+      description: |
+        - Active only (`409 BIZ_CONTRACT_NOT_ACTIVE`); `newEndDate` after the current end date and after today.
+        - A new rent applies from `effectiveDate` = current end date + 1 day.
+        - `topUpDeposit` brings the deposit up to one month of the new rent (`TOP_UP` ledger row).
+        - Writes `contract_renewals` with an addendum number (shared counter with holder transfers).
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RenewContractDto' }
+      responses:
+        '201':
+          description: Renewal recorded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContractRenewalDto' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /contracts/{id}/renewals:
+    get:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Renewal history (addenda)
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Renewals, oldest first
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/ContractRenewalDto' } }
+
+  # ===========================================================================
+  # 5d. VEHICLES & EXTRA SERVICES (decision D8)
+  # ===========================================================================
+  /contracts/{id}/vehicles:
+    get:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Vehicles of the people living under this contract
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: status, in: query, required: false, schema: { type: string, enum: [ACTIVE, ALL], default: ACTIVE } }
+      responses:
+        '200':
+          description: Vehicles
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/VehicleDto' } }
+    post:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Register a vehicle (parking subscription follows automatically)
+      description: |
+        - Active contract; the owner is an active occupant of it.
+        - Plate normalised (upper case, single spaces) and unique among the building's active vehicles, like the
+          parking card (`409 RES_ALREADY_EXISTS`); bicycles need no plate.
+        - The per-vehicle catalogue item of that vehicle type (if any) is subscribed / counted up.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterVehicleDto' }
+      responses:
+        '201':
+          description: Vehicle registered
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/VehicleDto' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /contracts/{id}/vehicles/{vehicleId}:
+    patch:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Correct the plate, model or parking card of an active vehicle
+      description: |
+        - The vehicle type cannot change (register a new vehicle). Inactive vehicles → `409 RES_CONFLICT` (`INACTIVE`).
+        - Plate normalised and unique among active vehicles, like the parking card (`409 RES_ALREADY_EXISTS`);
+          `licensePlate: null` only for bicycles; `parkingCardCode: null` removes the card.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: vehicleId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateVehicleDto' }
+      responses:
+        '200':
+          description: Vehicle updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/VehicleDto' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /contracts/{id}/vehicles/{vehicleId}/deactivate:
+    post:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Deactivate a vehicle (parking subscription counted down / removed)
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: vehicleId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeactivateVehicleDto' }
+      responses:
+        '201': { description: Vehicle deactivated }
+        '409': { description: Already inactive (RES_CONFLICT) }
+
+  /contracts/{id}/services:
+    get:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Extra services of the contract (Wi-Fi, parking, sanitation…)
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Subscriptions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/ContractServiceDto' } }
+    post:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Subscribe a draft or active contract to a catalogue service
+      description: |
+        - Per-room: `quantity` (default 1). Per-person: quantity = active (or planned) occupants, not settable.
+        - Per-vehicle items are subscribed by registering vehicles → `409 BIZ_SERVICE_QUANTITY_DERIVED`.
+        - One live subscription per item (`409 RES_ALREADY_EXISTS`); `agreedUnitPrice` defaults to the catalogue price.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddContractServiceDto' }
+      responses:
+        '201':
+          description: Subscribed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContractServiceDto' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /contracts/{id}/services/{subscriptionId}:
+    patch:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Change the agreed price (or the quantity of a per-room service)
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: subscriptionId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateContractServiceDto' }
+      responses:
+        '200': { description: Updated }
+        '409': { description: BIZ_SERVICE_QUANTITY_DERIVED or contract closed }
+    delete:
+      tags: [Contracts & 1-Month Deposit Escrow]
+      summary: Unsubscribe (not for per-vehicle items — deactivate the vehicles)
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: subscriptionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Removed }
+        '409': { description: BIZ_SERVICE_QUANTITY_DERIVED or contract closed }
+
+  # ===========================================================================
+  # 5e. SERVICE CATALOGUE PER BUILDING (decision D8)
+  # ===========================================================================
+  /service-catalog:
+    get:
+      tags: [Service Catalogue]
+      summary: Services offered by the building
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+      responses:
+        '200':
+          description: Catalogue items ordered by code
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/ServiceCatalogDto' } }
+    post:
+      tags: [Service Catalogue]
+      summary: Add a service (per room / per person / per vehicle type)
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateServiceCatalogDto' }
+      responses:
+        '201': { description: Created }
+        '409': { description: Code or vehicle type already used (RES_ALREADY_EXISTS) }
+
+  /service-catalog/{id}:
+    patch:
+      tags: [Service Catalogue]
+      summary: Rename / re-price (existing subscriptions keep their agreed price)
+      description: '`chargeUnit` and `vehicleType` cannot change while contracts subscribe to the item (`409 BIZ_SERVICE_IN_USE`).'
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateServiceCatalogDto' }
+      responses:
+        '200': { description: Updated }
+        '409': { $ref: '#/components/responses/ConflictError' }
+    delete:
+      tags: [Service Catalogue]
+      summary: Remove an unused service (soft delete)
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Removed }
+        '409': { description: BIZ_SERVICE_IN_USE }
 ```
 
 
@@ -2846,6 +3314,7 @@ components:
         conditionGrade: { type: string, enum: [GRADE_A_NEW, GRADE_B_GOOD, GRADE_C_FAIR, BROKEN] }
         customMonthlyFee: { type: number, example: 300000 }
         installedDate: { type: string, format: date }
+        rentedUnderContractId: { type: string, format: uuid, nullable: true, description: 'Inventory list only: draft / active contract renting the unit' }
         version: { type: integer }
 
     UpdateRoomAssetDto:
@@ -3119,43 +3588,251 @@ components:
                 id: { type: string, format: uuid }
                 fullName: { type: string }
             hasLogin: { type: boolean, description: A TENANT account is linked (created at move-in) }
+            currentOccupancy:
+              type: object
+              nullable: true
+              description: Where the person lives now (null = not living in a room of this building)
+              properties:
+                occupantId: { type: string, format: uuid }
+                contractId: { type: string, format: uuid }
+                contractCode: { type: string, example: "HD-2026/007-P302" }
+                roomId: { type: string, format: uuid }
+                roomNumber: { type: string, example: "P.302" }
+                role: { type: string, enum: [PRIMARY_HOLDER, CO_OCCUPANT] }
+                movedInAt: { type: string, format: date }
+                residencyStatus: { type: string, enum: [PENDING_DECLARATION, SUBMITTED, REGISTERED, DEREGISTRATION_PENDING, DEREGISTERED] }
             version: { type: integer }
 
     CreateContractDto:
       type: object
-      required: [roomId, primaryTenantId, startDate, endDate, monthlyRoomRent, depositAmount, pcccCommitmentSigned]
+      required: [roomId, primaryTenantId, startDate, endDate]
       properties:
         roomId: { type: string, format: uuid }
         primaryTenantId:
           type: string
           format: uuid
-          description: Contract holder (người đứng tên) — an adult with an ID document and consent
+          description: Contract holder (người đứng tên) — an adult with an ID document and consent on startDate
         coOccupants:
           type: array
-          description: Everyone else who lives in the room from the start (each needs a tenant profile). Total ≤ room.maxOccupants.
-          items: { $ref: '#/components/schemas/AddOccupantDto' }
+          description: Everyone else who moves in at activation (each needs a tenant profile). Holder + these ≤ room.maxOccupants.
+          items: { $ref: '#/components/schemas/PlannedOccupantDto' }
         startDate: { type: string, format: date, example: "2026-10-01" }
         endDate: { type: string, format: date, example: "2027-09-30" }
-        monthlyRoomRent: { type: number, example: 6500000, description: Per room, not per person }
-        depositAmount: { type: number, description: "Standard 1-month security deposit (Tiền đặt cọc)", example: 6500000 }
+        monthlyRoomRent: { type: number, example: 6500000, description: "Per room, not per person; default = the room's effective rent" }
+        depositAmount: { type: number, description: "Security deposit (Tiền đặt cọc); default = one month of rent", example: 6500000 }
         paymentDueDay: { type: integer, minimum: 1, maximum: 28, default: 5 }
-        pcccCommitmentSigned: { type: boolean, example: true }
-        rentedRoomAssetIds: { type: array, items: { type: string, format: uuid } }
-        serviceSubscriptions:
-          type: array
-          items:
-            type: object
-            required: [serviceCatalogId, quantity]
-            properties:
-              serviceCatalogId: { type: string, format: uuid }
-              quantity: { type: integer, minimum: 1, example: 2 }
+        pcccCommitmentSigned: { type: boolean, default: false, description: Must be true to activate }
+        rentedRoomAssetIds: { type: array, items: { type: string, format: uuid }, description: Installed units of this room rented with the contract }
+
+    PlannedOccupantDto:
+      type: object
+      required: [tenantId]
+      properties:
+        tenantId: { type: string, format: uuid }
+        movedInAt: { type: string, format: date, nullable: true, description: "Default = startDate; between startDate and endDate" }
+        successionOrder: { type: integer, minimum: 1, nullable: true }
+        relationshipToHolder: { type: string, nullable: true, example: "Con" }
+
+    UpdateDraftContractDto:
+      type: object
+      properties:
+        primaryTenantId: { type: string, format: uuid }
+        coOccupants: { type: array, items: { $ref: '#/components/schemas/PlannedOccupantDto' }, description: Replaces the planned list }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        monthlyRoomRent: { type: number }
+        depositAmount: { type: number }
+        paymentDueDay: { type: integer, minimum: 1, maximum: 28 }
+        pcccCommitmentSigned: { type: boolean }
+        rentedRoomAssetIds: { type: array, items: { type: string, format: uuid }, description: Replaces the rented units }
+        version: { type: integer }
+
+    VersionedActionDto:
+      type: object
+      properties:
+        version: { type: integer, description: Optional optimistic lock }
+
+    RenewContractDto:
+      type: object
+      required: [newEndDate]
+      properties:
+        newEndDate: { type: string, format: date, example: "2028-09-30" }
+        newMonthlyRoomRent: { type: number, nullable: true, example: 7000000, description: From current end date + 1 }
+        topUpDeposit: { type: boolean, default: false, description: Bring the deposit up to one month of the new rent }
+        notes: { type: string, nullable: true }
+        version: { type: integer }
+
+    ContractSummaryDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        contractCode: { type: string, example: "HD-2026/007-P302" }
+        status: { type: string, enum: [DRAFT, ACTIVE, CANCELLED, TERMINATED, EXPIRED] }
+        roomId: { type: string, format: uuid }
+        roomNumber: { type: string, example: "P.302" }
+        primaryTenantName: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        monthlyRoomRent: { type: number }
+        activeOccupantCount: { type: integer }
+
+    ContractDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        contractCode: { type: string }
+        status: { type: string, enum: [DRAFT, ACTIVE, CANCELLED, TERMINATED, EXPIRED] }
+        room: { type: object, properties: { id: { type: string, format: uuid }, roomNumber: { type: string }, floor: { type: integer }, maxOccupants: { type: integer } } }
+        primaryHolder:
+          type: object
+          properties:
+            tenantId: { type: string, format: uuid }
+            fullName: { type: string }
+            idCardMasked: { type: string, description: Not returned by /contracts/mine }
+            phone: { type: string, nullable: true }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        monthlyRoomRent: { type: number }
+        depositAmount: { type: number }
+        depositStatus: { type: string, enum: [PENDING_COLLECTION, HELD, PARTIALLY_REFUNDED, FULLY_REFUNDED, FORFEITED] }
+        depositBalance: { type: number, description: balanceAfter of the latest ledger row }
+        paymentDueDay: { type: integer }
+        pcccCommitmentSigned: { type: boolean }
+        registeredEvnQuotaHeadcount: { type: integer }
+        activeOccupantCount: { type: integer }
+        plannedCoOccupants: { type: array, nullable: true, description: Draft only, items: { type: object, properties: { tenantId: { type: string }, fullName: { type: string }, movedInAt: { type: string, format: date }, successionOrder: { type: integer, nullable: true }, relationshipToHolder: { type: string, nullable: true } } } }
+        rentedAssets: { type: array, items: { type: object, properties: { contractAssetId: { type: string }, roomAssetId: { type: string }, name: { type: string }, serialNumber: { type: string }, agreedMonthlyFee: { type: number }, handoverCondition: { type: string } } } }
+        services: { type: array, items: { $ref: '#/components/schemas/ContractServiceDto' } }
+        activatedAt: { type: string, format: date-time, nullable: true }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        version: { type: integer }
+
+    ContractRenewalDto:
+      type: object
+      properties:
+        renewalId: { type: string, format: uuid }
+        previousEndDate: { type: string, format: date }
+        newEndDate: { type: string, format: date }
+        effectiveDate: { type: string, format: date }
+        previousMonthlyRent: { type: number }
+        newMonthlyRent: { type: number }
+        depositTopUpAmount: { type: number }
+        addendumNo: { type: string, example: "PL-2026/007-P302-01" }
+        createdAt: { type: string, format: date-time }
+
+    DepositLedgerEntryDto:
+      type: object
+      properties:
+        entryNo: { type: integer }
+        transactionType: { type: string, enum: [INITIAL_COLLECTION, TOP_UP, CHECKOUT_DEDUCTION, SURPLUS_REFUND, FORFEITURE, HOLDER_TRANSFER_CARRY_OVER, HOLDER_TRANSFER_REFUND, HOLDER_TRANSFER_COLLECTION] }
+        amount: { type: number, description: "+ collected, - refunded / deducted" }
+        balanceAfter: { type: number }
+        counterpartyTenantId: { type: string, format: uuid }
+        counterpartyName: { type: string }
+        holderTransferId: { type: string, format: uuid, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    RegisterVehicleDto:
+      type: object
+      required: [ownerTenantId, vehicleType, brandModel]
+      properties:
+        ownerTenantId: { type: string, format: uuid, description: An active occupant of the contract }
+        vehicleType: { type: string, enum: [MOTORBIKE, ELECTRIC_BIKE, BICYCLE, CAR] }
+        licensePlate: { type: string, nullable: true, example: "59-G2 123.45", description: Required except for bicycles }
+        brandModel: { type: string, example: "Honda Vision" }
+        parkingCardCode: { type: string, nullable: true }
+
+    UpdateVehicleDto:
+      type: object
+      properties:
+        licensePlate: { type: string, nullable: true, example: "59-G2 123.45", description: Null only for bicycles }
+        brandModel: { type: string, maxLength: 100 }
+        parkingCardCode: { type: string, nullable: true, description: null removes the card }
+
+    DeactivateVehicleDto:
+      type: object
+      properties:
+        deactivatedAt: { type: string, format: date, description: Default today; not in the future }
+
+    VehicleDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        ownerTenantId: { type: string, format: uuid }
+        ownerName: { type: string }
+        vehicleType: { type: string, enum: [MOTORBIKE, ELECTRIC_BIKE, BICYCLE, CAR] }
+        licensePlate: { type: string, nullable: true }
+        brandModel: { type: string }
+        parkingCardCode: { type: string, nullable: true }
+        isActive: { type: boolean }
+        deactivatedAt: { type: string, format: date, nullable: true }
+
+    AddContractServiceDto:
+      type: object
+      required: [serviceCatalogId]
+      properties:
+        serviceCatalogId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1, maximum: 20, description: Per-room services only (default 1) }
+        agreedUnitPrice: { type: number, minimum: 0, description: Default = catalogue price }
+
+    UpdateContractServiceDto:
+      type: object
+      properties:
+        quantity: { type: integer, minimum: 1, maximum: 20 }
+        agreedUnitPrice: { type: number, minimum: 0 }
+
+    ContractServiceDto:
+      type: object
+      properties:
+        subscriptionId: { type: string, format: uuid }
+        serviceCatalogId: { type: string, format: uuid }
+        serviceCode: { type: string, example: "WIFI" }
+        name: { type: string }
+        chargeUnit: { type: string, enum: [PER_ROOM_MONTH, PER_PERSON_MONTH, PER_VEHICLE_MONTH] }
+        quantity: { type: integer }
+        agreedUnitPrice: { type: number }
+        quantitySource: { type: string, enum: [MANUAL, OCCUPANTS, VEHICLES] }
+
+    CreateServiceCatalogDto:
+      type: object
+      required: [code, name, chargeUnit, defaultUnitPrice]
+      properties:
+        code: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,49}$', example: PARKING_MOTORBIKE }
+        name: { type: string, example: "Gửi xe máy" }
+        chargeUnit: { type: string, enum: [PER_ROOM_MONTH, PER_PERSON_MONTH, PER_VEHICLE_MONTH] }
+        vehicleType: { type: string, enum: [MOTORBIKE, ELECTRIC_BIKE, BICYCLE, CAR], description: Required exactly for PER_VEHICLE_MONTH }
+        defaultUnitPrice: { type: number, minimum: 0, example: 150000 }
+        isProratableOnCheckout: { type: boolean, default: true }
+
+    UpdateServiceCatalogDto:
+      type: object
+      properties:
+        name: { type: string }
+        chargeUnit: { type: string, enum: [PER_ROOM_MONTH, PER_PERSON_MONTH, PER_VEHICLE_MONTH] }
+        vehicleType: { type: string, nullable: true, enum: [MOTORBIKE, ELECTRIC_BIKE, BICYCLE, CAR] }
+        defaultUnitPrice: { type: number, minimum: 0 }
+        isProratableOnCheckout: { type: boolean }
+        version: { type: integer }
+
+    ServiceCatalogDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        chargeUnit: { type: string, enum: [PER_ROOM_MONTH, PER_PERSON_MONTH, PER_VEHICLE_MONTH] }
+        vehicleType: { type: string, nullable: true }
+        defaultUnitPrice: { type: number }
+        isProratableOnCheckout: { type: boolean }
+        version: { type: integer }
 
     AddOccupantDto:
       type: object
       required: [tenantId, movedInAt]
       properties:
         tenantId: { type: string, format: uuid }
-        movedInAt: { type: string, format: date, example: "2026-11-01" }
+        movedInAt: { type: string, format: date, example: "2026-11-01", description: "Between the contract's startDate and today" }
         successionOrder: { type: integer, minimum: 1, nullable: true, description: "Agreed order to take over the contract (1 = first)" }
         relationshipToHolder: { type: string, nullable: true, example: "Bạn cùng phòng", description: CT01 relationship to the household head }
 
@@ -3199,7 +3876,7 @@ components:
         movedOutAt: { type: string, format: date, nullable: true }
         successionOrder: { type: integer, nullable: true }
         isMinor: { type: boolean }
-        residenceChannel: { type: string, enum: [CT01, FOREIGNER_TEMPORARY_RESIDENCE] }
+        residenceChannel: { type: string, enum: [CT01, FOREIGNER_TEMPORARY_RESIDENCE], description: By nationality (Vietnamese with a passport → CT01) }
         residencyStatus: { type: string, enum: [PENDING_DECLARATION, SUBMITTED, REGISTERED, DEREGISTRATION_PENDING, DEREGISTERED] }
         temporaryStayValidUntil: { type: string, format: date, nullable: true }
 

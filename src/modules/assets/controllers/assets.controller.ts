@@ -8,7 +8,7 @@ import { RentalResource } from '../../../core/access-control/rental-permissions'
 import { Idempotent } from '../../../core/security/idempotency/idempotency.decorator';
 import { ApiAudience } from '../../../infrastructure/swagger/api-audience.decorator';
 import { AssetsService } from '../services/assets.service';
-import { AssignRoomAssetDto, CreateAssetDto, QueryAssetsDto, UpdateAssetDto, UpdateRoomAssetDto } from '../dto/assets.dto';
+import { AssignRoomAssetDto, CreateAssetDto, QueryAssetsDto, QueryRoomAssetsDto, UpdateAssetDto, UpdateRoomAssetDto } from '../dto/assets.dto';
 
 const A = RentalResource.ASSETS;
 
@@ -39,6 +39,13 @@ export class AssetsController {
   @ApiOperation({ summary: 'Change a catalogue item' })
   update(@Param('id', ParseUUIDStrictPipe) id: string, @Body() dto: UpdateAssetDto) {
     return this.assets.update(id, dto);
+  }
+
+  @Get('room-assignments')
+  @RequirePermissions({ resource: A, action: Action.READ, scope: Scope.DEPARTMENT })
+  @ApiOperation({ summary: 'Installed units of the building (by room, item, serial, condition) with the renting contract' })
+  listUnits(@Query() query: QueryRoomAssetsDto) {
+    return this.assets.listUnits(query);
   }
 
   @Post('room-assignments')

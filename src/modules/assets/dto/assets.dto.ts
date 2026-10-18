@@ -1,7 +1,7 @@
 /** DTO của AssetsModule (tài liệu 04, tag Assets & Furniture Catalog). Phí VND là số nguyên. */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import { IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { AssetCategory } from '../entities/asset.entity';
 import { AssetConditionGrade } from '../entities/room-asset.entity';
 import { MAX_VND } from '../../properties/dto/properties.dto';
@@ -52,6 +52,23 @@ export class QueryAssetsDto {
   @IsOptional()
   @IsEnum(AssetCategory)
   category?: AssetCategory;
+}
+
+export class QueryRoomAssetsDto {
+  @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() roomId?: string;
+  @ApiPropertyOptional({ format: 'uuid' }) @IsOptional() @IsUUID() assetId?: string;
+
+  @ApiPropertyOptional({ description: 'Serial number or part of it (QR / label scan)', example: 'DK-2026' })
+  @IsOptional()
+  @Transform(upper)
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  serialNumber?: string;
+
+  @ApiPropertyOptional({ enum: AssetConditionGrade }) @IsOptional() @IsEnum(AssetConditionGrade) conditionGrade?: AssetConditionGrade;
+  @ApiPropertyOptional({ minimum: 1, default: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) page: number = 1;
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 20 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit: number = 20;
 }
 
 export class AssignRoomAssetDto {

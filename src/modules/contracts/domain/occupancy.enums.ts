@@ -34,7 +34,7 @@ export enum ResidencyStatus {
   DEREGISTERED = 'DEREGISTERED',
 }
 
-/** Kênh khai báo cư trú suy ra từ loại giấy tờ */
+/** Kênh khai báo cư trú suy ra từ QUỐC TỊCH (công dân Việt Nam dùng CT01 kể cả khi định danh bằng hộ chiếu) */
 export enum ResidenceChannel {
   CT01 = 'CT01',
   FOREIGNER_TEMPORARY_RESIDENCE = 'FOREIGNER_TEMPORARY_RESIDENCE',
@@ -48,5 +48,5 @@ export enum HolderTransferDepositHandling {
   REFUND_AND_RECOLLECT = 'REFUND_AND_RECOLLECT',
 }
 
-export const residenceChannelFor = (type: IdDocumentType): ResidenceChannel =>
-  type === IdDocumentType.PASSPORT ? ResidenceChannel.FOREIGNER_TEMPORARY_RESIDENCE : ResidenceChannel.CT01;
+export const residenceChannelFor = (person: { idDocumentType: IdDocumentType; nationality: string }): ResidenceChannel =>
+  person.nationality !== 'VN' ? ResidenceChannel.FOREIGNER_TEMPORARY_RESIDENCE : ResidenceChannel.CT01;

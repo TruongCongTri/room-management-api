@@ -137,6 +137,16 @@ export class UsersService {
     return { items, total, page: query.page, limit: query.limit };
   }
 
+  /** Chi tiết một tài khoản (nhân viên hoặc khách thuê) có chung ít nhất một tòa nhà với chủ nhà; ngoài phạm vi → 404 */
+  async getById(actor: RequestUserContext, userId: string): Promise<UserView> {
+    const scope = await this.actorBuildingIds(actor);
+    const shared = await this.dataSource
+      .getRepository(UserBuildingAccess)
+      .exists({ where: { userId, buildingId: In(scope.length ? scope : ['00000000-0000-0000-0000-000000000000']) } });
+    if (!shared) throw new NotFoundException({ errorCode: SystemErrorCode.RES_NOT_FOUND, message: 'User not found.' });
+    return this.view(userId, scope);
+  }
+
   async update(actor: RequestUserContext, userId: string, input: UpdateStaffInput): Promise<UserView> {
     const scope = await this.actorBuildingIds(actor);
     if (input.buildingIds) await this.assertWithinActorBuildings(actor, input.buildingIds);

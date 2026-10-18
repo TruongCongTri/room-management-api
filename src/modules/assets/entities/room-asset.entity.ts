@@ -1,4 +1,4 @@
-import { Check, Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
+import { Check, Column, Entity, Index, JoinColumn, ManyToOne, Unique } from 'typeorm';
 import { BuildingScopedEntity } from '../../../core/multitenancy/tenant-base.entity';
 import { Auditable } from '../../../infrastructure/audit/decorators/auditable.decorator';
 import { Room } from '../../properties/entities/room.entity';
@@ -24,6 +24,7 @@ export enum AssetConditionGrade {
 @Index('idx_room_assets_room_id', ['roomId'])
 @Index('idx_room_assets_bld_serial_unique', ['buildingId', 'serialNumber'], { unique: true, where: '"deleted_at" IS NULL' })
 @Check('chk_room_assets_fee', `"custom_monthly_fee" >= 0`)
+@Unique('uq_room_assets_bld_id', ['buildingId', 'id'])
 export class RoomAsset extends BuildingScopedEntity {
   @Column({ type: 'uuid' })
   roomId: string;

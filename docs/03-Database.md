@@ -808,7 +808,7 @@ One contract per room tenancy. It carries the rent, the **1-month security depos
 
 ```ts
 // src/modules/contracts/entities/contract.entity.ts
-export enum ContractStatus { DRAFT = 'DRAFT', ACTIVE = 'ACTIVE', TERMINATED = 'TERMINATED', EXPIRED = 'EXPIRED' }
+export enum ContractStatus { DRAFT = 'DRAFT', ACTIVE = 'ACTIVE', CANCELLED = 'CANCELLED', TERMINATED = 'TERMINATED', EXPIRED = 'EXPIRED' }
 
 export enum DepositStatus {
   PENDING_COLLECTION = 'PENDING_COLLECTION',
@@ -822,10 +822,10 @@ export enum DepositStatus {
 @Index('idx_contracts_bld_status_room', ['buildingId', 'status', 'roomId'])
 @Index('idx_contracts_primary_tenant', ['primaryTenantId'])
 @Index('idx_contracts_dates', ['buildingId', 'startDate', 'endDate'])
+@Index('idx_contracts_bld_code_unique', ['buildingId', 'contractCode'], { unique: true })
 export class Contract extends BuildingScopedEntity {
-  @Index('idx_contracts_code_unique', { unique: true })
   @Column({ type: 'varchar', length: 50 })
-  contractCode: string; // e.g. "HD-2026/080-P302"
+  contractCode: string; // e.g. "HD-2026/007-P302" — unique per building
 
   @Column({ type: 'uuid' })
   roomId: string;
@@ -852,8 +852,8 @@ export class Contract extends BuildingScopedEntity {
   @Column({ type: 'numeric', precision: 12, scale: 2 })
   depositAmount: string; // standard 1-month deposit
 
-  @Column({ type: 'enum', enum: DepositStatus, default: DepositStatus.HELD })
-  depositStatus: DepositStatus;
+  @Column({ type: 'enum', enum: DepositStatus, default: DepositStatus.PENDING_COLLECTION })
+  depositStatus: DepositStatus; // HELD from activation
 
   @Column({ type: 'smallint', default: 5 })
   paymentDueDay: number;
@@ -870,6 +870,11 @@ export class Contract extends BuildingScopedEntity {
 
   @Column({ type: 'enum', enum: ContractStatus, default: ContractStatus.DRAFT })
   status: ContractStatus;
+
+  // Draft only: people who will move in with the holder [{ tenantId, movedInAt, successionOrder, relationshipToHolder }]
+  @Column({ type: 'jsonb', nullable: true }) plannedCoOccupants?: PlannedOccupant[] | null;
+  @Column({ type: 'timestamptz', nullable: true }) activatedAt?: Date | null;
+  @Column({ type: 'timestamptz', nullable: true }) cancelledAt?: Date | null;
 
   @OneToMany(() => ContractOccupant, (co) => co.contract, { cascade: true }) occupants: ContractOccupant[];
   @OneToMany(() => ContractHolderTransfer, (t) => t.contract) holderTransfers: ContractHolderTransfer[];
@@ -889,7 +894,7 @@ One row per person per stay. A person who moves out keeps the row (`status = MOV
 * **Exactly one active contract holder** per contract (`idx_occupants_one_active_holder`).
 * **A person lives in one room at a time** — one temporary residence (`idx_occupants_tenant_one_active`).
 * **Capacity:** active occupants ≤ `rooms.max_occupants` (checked by `assertCanAddOccupant()` under the contract lock).
-* **Residence per person:** `PENDING_DECLARATION → SUBMITTED → REGISTERED` on move-in; `DEREGISTRATION_PENDING → DEREGISTERED` on move-out. `residence_channel` is `CT01` for CCCD holders and `FOREIGNER_TEMPORARY_RESIDENCE` for passports. Only `REGISTERED` occupants count towards the EVN quota.
+* **Residence per person:** `PENDING_DECLARATION → SUBMITTED → REGISTERED` on move-in; `DEREGISTRATION_PENDING → DEREGISTERED` on move-out. `residence_channel` follows the nationality: `CT01` for Vietnamese citizens (also when identified by a passport), `FOREIGNER_TEMPORARY_RESIDENCE` for foreigners (Law 47/2014/QH13); a nationality correction on the profile moves the current stay to the right channel. Only `REGISTERED` occupants count towards the EVN quota.
 * **Succession:** `succession_order` (1 = first) records who the parties agreed takes over the contract; without it, the earliest `moved_in_at` eligible adult succeeds (`selectNextPrimaryHolder`).
 
 ```ts
@@ -948,6 +953,10 @@ export class ContractOccupant extends BuildingScopedEntity {
   // Latest CT01 PDF for this person (residence-ct01 category)
   @Column({ type: 'varchar', length: 255, nullable: true })
   ct01DocumentKey?: string | null;
+
+  // VNeID / police reference of the latest declaration step
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  residenceReferenceNo?: string | null;
 }
 ```
 
@@ -1174,6 +1183,19 @@ export class TenantVehicle extends BuildingScopedEntity {
   @Column({ type: 'date', nullable: true }) deactivatedAt?: string | null; // owner moved out
 }
 ```
+
+#### 3.2b Module 3 implementation notes (decision D8)
+
+These refine entities 7–13 above; section 4 (6d) has the matching DDL.
+
+* **Every table of this context is building-scoped** (`BuildingScopedEntity`, RLS): `contract_assets`, `service_catalogs` and `contract_services` included. Child rows reference their parents through **same-building composite FKs** `(building_id, x_id) → parent (building_id, id)`, like module 1.
+* **`contracts`:** status adds `CANCELLED` (a draft that never started); a draft keeps its planned co-occupants in `planned_co_occupants` (jsonb, cleared at activation); `activated_at`, `cancelled_at`; deposit `PENDING_COLLECTION` until activation; contract code unique per building; one draft and one active contract per room; `rooms.current_contract_id → contracts` (same building).
+* **`contract_renewals`** (new, 8c): `contract_id`, `previous_end_date`, `new_end_date`, `previous_monthly_rent`, `new_monthly_rent`, `effective_date` (= previous end + 1 day), `deposit_top_up_amount`, `addendum_no` (shared counter with holder transfers), `approved_by_id`, `notes`.
+* **`contract_assets`:** `agreed_monthly_fee` snapshotted at draft time, `handover_condition` set at activation; FK to `room_assets (building_id, id)`.
+* **`service_catalogs`:** + `vehicle_type` (required exactly for `PER_VEHICLE_MONTH`, one item per vehicle type); `code` unique among non-deleted items.
+* **`contract_services`:** `quantity ≥ 1`, one live subscription per catalogue item and contract; per-person / per-vehicle quantities are recomputed by the service, never typed.
+* **`tenant_vehicles`:** `license_plate` nullable only for bicycles; active plates and parking cards unique per building; `is_active ⇔ deactivated_at IS NULL`.
+* **`deposit_ledgers`:** + `entry_no` (1, 2, 3 … per contract, unique — orders rows written in the same transaction and stops two writers computing the same balance); sign of `amount` fixed by the type; `balance_after ≥ 0`; **immutable** (trigger rejects UPDATE / DELETE / TRUNCATE).
 
 #### 13\. `DepositLedger` (`deposit_ledgers`)
 
@@ -1722,11 +1744,13 @@ ALTER TABLE meter_readings
 -- ============================================================================
 CREATE OR REPLACE FUNCTION check_contract_primary_holder() RETURNS trigger AS $$
 DECLARE
-  v_contract_id uuid := COALESCE(NEW.contract_id, NEW.id);
+  v_contract_id uuid;
   v_status text;
   v_primary uuid;
   v_holder uuid;
 BEGIN
+  -- contracts has no contract_id column: COALESCE(NEW.contract_id, NEW.id) would fail there
+  IF TG_TABLE_NAME = 'contracts' THEN v_contract_id := NEW.id; ELSE v_contract_id := NEW.contract_id; END IF;
   SELECT status, primary_tenant_id INTO v_status, v_primary FROM contracts WHERE id = v_contract_id;
   IF v_status IS DISTINCT FROM 'ACTIVE' THEN
     RETURN NULL; -- drafts and closed contracts are not checked
@@ -1760,7 +1784,8 @@ CREATE CONSTRAINT TRIGGER trg_occupant_primary_holder_consistency
 -- ============================================================================
 SELECT setup_building_rls(t) FROM unnest(ARRAY[
   'room_types', 'rooms', 'assets', 'room_assets', 'tenants',
-  'contracts', 'contract_occupants', 'contract_holder_transfers', 'tenant_vehicles', 'deposit_ledgers',
+  'contracts', 'contract_occupants', 'contract_holder_transfers', 'contract_renewals', 'contract_assets',
+  'service_catalogs', 'contract_services', 'tenant_vehicles', 'deposit_ledgers',
   'meter_readings', 'invoices', 'payment_transactions', 'checkout_settlements', 'pccc_compliance_logs'
 ]) AS t;
 
@@ -1817,6 +1842,88 @@ CREATE INDEX idx_tenants_bld_name_search ON tenants (building_id, full_name_sear
 -- A person profile links to at most one login, and a login to at most one profile per building
 CREATE UNIQUE INDEX idx_tenants_bld_user_unique
   ON tenants (building_id, user_id) WHERE user_id IS NOT NULL AND deleted_at IS NULL;
+
+-- 6d. CONTRACTS (module 3, decision D8)
+ALTER TABLE contracts
+  ADD CONSTRAINT uq_contracts_bld_id UNIQUE (building_id, id),
+  ADD CONSTRAINT fk_contracts_room_same_building FOREIGN KEY (building_id, room_id) REFERENCES rooms (building_id, id),
+  ADD CONSTRAINT fk_contracts_holder_same_building FOREIGN KEY (building_id, primary_tenant_id) REFERENCES tenants (building_id, id),
+  ADD CONSTRAINT chk_contracts_payment_due_day CHECK (payment_due_day BETWEEN 1 AND 28),
+  ADD CONSTRAINT chk_contracts_plan_only_draft CHECK (status = 'DRAFT' OR planned_co_occupants IS NULL),
+  ADD CONSTRAINT chk_contracts_activated CHECK ((activated_at IS NULL) = (status IN ('DRAFT', 'CANCELLED'))),
+  ADD CONSTRAINT chk_contracts_cancelled CHECK ((cancelled_at IS NOT NULL) = (status = 'CANCELLED')),
+  ADD CONSTRAINT chk_contracts_active_deposit CHECK (status <> 'ACTIVE' OR deposit_status <> 'PENDING_COLLECTION');
+CREATE UNIQUE INDEX idx_contracts_bld_code_unique ON contracts (building_id, contract_code);
+CREATE UNIQUE INDEX idx_unique_draft_contract_per_room ON contracts (room_id) WHERE status = 'DRAFT' AND deleted_at IS NULL;
+ALTER TABLE rooms ADD CONSTRAINT fk_rooms_current_contract_same_building
+  FOREIGN KEY (building_id, current_contract_id) REFERENCES contracts (building_id, id);
+
+ALTER TABLE contract_occupants
+  ADD CONSTRAINT fk_occupants_contract_same_building FOREIGN KEY (building_id, contract_id) REFERENCES contracts (building_id, id),
+  ADD CONSTRAINT fk_occupants_tenant_same_building FOREIGN KEY (building_id, tenant_id) REFERENCES tenants (building_id, id),
+  ADD CONSTRAINT chk_occupants_succession_order CHECK (succession_order IS NULL OR succession_order >= 1);
+
+ALTER TABLE contract_holder_transfers
+  ADD CONSTRAINT fk_holder_transfers_contract_same_building FOREIGN KEY (building_id, contract_id) REFERENCES contracts (building_id, id),
+  ADD CONSTRAINT fk_holder_transfers_from_same_building FOREIGN KEY (building_id, from_tenant_id) REFERENCES tenants (building_id, id),
+  ADD CONSTRAINT fk_holder_transfers_to_same_building FOREIGN KEY (building_id, to_tenant_id) REFERENCES tenants (building_id, id),
+  ADD CONSTRAINT chk_holder_transfer_outstanding CHECK (outstanding_balance >= 0),
+  ADD CONSTRAINT chk_holder_transfer_assumed_by CHECK (outstanding_balance_assumed_by IN ('OUTGOING_HOLDER', 'INCOMING_HOLDER'));
+CREATE UNIQUE INDEX idx_holder_transfers_bld_addendum_unique ON contract_holder_transfers (building_id, addendum_no);
+
+ALTER TABLE contract_renewals
+  ADD CONSTRAINT fk_renewals_contract_same_building FOREIGN KEY (building_id, contract_id) REFERENCES contracts (building_id, id),
+  ADD CONSTRAINT chk_renewals_values CHECK (new_end_date > previous_end_date AND new_monthly_rent > 0
+    AND previous_monthly_rent > 0 AND deposit_top_up_amount >= 0 AND effective_date = previous_end_date + 1);
+CREATE UNIQUE INDEX idx_renewals_bld_addendum_unique ON contract_renewals (building_id, addendum_no);
+
+ALTER TABLE room_assets ADD CONSTRAINT uq_room_assets_bld_id UNIQUE (building_id, id);
+ALTER TABLE contract_assets
+  ADD CONSTRAINT fk_contract_assets_contract_same_building FOREIGN KEY (building_id, contract_id) REFERENCES contracts (building_id, id),
+  ADD CONSTRAINT fk_contract_assets_unit_same_building FOREIGN KEY (building_id, room_asset_id) REFERENCES room_assets (building_id, id),
+  ADD CONSTRAINT chk_contract_assets_fee CHECK (agreed_monthly_fee >= 0);
+
+ALTER TABLE service_catalogs
+  ADD CONSTRAINT uq_service_catalogs_bld_id UNIQUE (building_id, id),
+  ADD CONSTRAINT chk_service_catalogs_code CHECK (code ~ '^[A-Z][A-Z0-9_]{1,49}$'),
+  ADD CONSTRAINT chk_service_catalogs_price CHECK (default_unit_price >= 0),
+  ADD CONSTRAINT chk_service_catalogs_vehicle CHECK ((charge_unit = 'PER_VEHICLE_MONTH') = (vehicle_type IS NOT NULL));
+CREATE UNIQUE INDEX idx_service_catalogs_bld_code_unique ON service_catalogs (building_id, code) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_service_catalogs_bld_vehicle_unique ON service_catalogs (building_id, vehicle_type)
+  WHERE vehicle_type IS NOT NULL AND deleted_at IS NULL;
+
+ALTER TABLE contract_services
+  ADD CONSTRAINT fk_contract_services_contract_same_building FOREIGN KEY (building_id, contract_id) REFERENCES contracts (building_id, id),
+  ADD CONSTRAINT fk_contract_services_catalog_same_building FOREIGN KEY (building_id, service_catalog_id) REFERENCES service_catalogs (building_id, id),
+  ADD CONSTRAINT chk_contract_services_values CHECK (quantity >= 1 AND agreed_unit_price >= 0);
+CREATE UNIQUE INDEX idx_contract_services_contract_catalog_unique ON contract_services (contract_id, service_catalog_id) WHERE deleted_at IS NULL;
+
+ALTER TABLE tenant_vehicles
+  ADD CONSTRAINT fk_vehicles_contract_same_building FOREIGN KEY (building_id, contract_id) REFERENCES contracts (building_id, id),
+  ADD CONSTRAINT fk_vehicles_owner_same_building FOREIGN KEY (building_id, owner_tenant_id) REFERENCES tenants (building_id, id),
+  ADD CONSTRAINT chk_vehicles_active CHECK (is_active = (deactivated_at IS NULL)),
+  ADD CONSTRAINT chk_vehicles_plate CHECK (vehicle_type = 'BICYCLE' OR license_plate IS NOT NULL);
+CREATE UNIQUE INDEX idx_vehicles_bld_active_plate_unique ON tenant_vehicles (building_id, license_plate)
+  WHERE is_active AND license_plate IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_vehicles_bld_active_card_unique ON tenant_vehicles (building_id, parking_card_code)
+  WHERE is_active AND parking_card_code IS NOT NULL AND deleted_at IS NULL;
+
+ALTER TABLE deposit_ledgers
+  ADD CONSTRAINT fk_deposit_ledgers_contract_same_building FOREIGN KEY (building_id, contract_id) REFERENCES contracts (building_id, id),
+  ADD CONSTRAINT fk_deposit_ledgers_counterparty_same_building FOREIGN KEY (building_id, counterparty_tenant_id) REFERENCES tenants (building_id, id),
+  ADD CONSTRAINT chk_deposit_ledgers_balance CHECK (balance_after >= 0),
+  ADD CONSTRAINT chk_deposit_ledgers_sign CHECK (
+    (transaction_type IN ('INITIAL_COLLECTION', 'TOP_UP', 'HOLDER_TRANSFER_COLLECTION') AND amount > 0)
+    OR (transaction_type IN ('CHECKOUT_DEDUCTION', 'SURPLUS_REFUND', 'FORFEITURE', 'HOLDER_TRANSFER_REFUND') AND amount < 0)
+    OR (transaction_type = 'HOLDER_TRANSFER_CARRY_OVER' AND amount = 0)),
+  ADD CONSTRAINT chk_deposit_ledgers_transfer_ref CHECK (
+    (transaction_type LIKE 'HOLDER_TRANSFER_%') = (holder_transfer_id IS NOT NULL));
+CREATE UNIQUE INDEX idx_deposit_ledgers_contract_entry_unique ON deposit_ledgers (contract_id, entry_no);
+-- Immutable ledger: corrections are new rows, never edits
+CREATE TRIGGER trg_deposit_ledgers_immutable BEFORE UPDATE OR DELETE ON deposit_ledgers
+  FOR EACH ROW EXECUTE FUNCTION reject_deposit_ledger_change();
+CREATE TRIGGER trg_deposit_ledgers_immutable_truncate BEFORE TRUNCATE ON deposit_ledgers
+  FOR EACH STATEMENT EXECUTE FUNCTION reject_deposit_ledger_change();
 
 ALTER TABLE users
   ADD CONSTRAINT chk_users_phone_e164 CHECK (phone_e164 ~ '^\+[1-9][0-9]{7,14}$'),

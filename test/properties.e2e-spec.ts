@@ -106,11 +106,12 @@ describe('Properties & Assets (HTTP, real PostgreSQL as app_user + Redis)', () =
 
   beforeAll(async () => {
     const fakeResolver = { resolve: async (userId: string, buildingId: string) => residences.get(`${buildingId}:${userId}`) ?? null };
-    const moduleFixture = await Test.createTestingModule({
-      imports: [AppModule],
-      // Vai trò của ContractsModule (module 3): ai đang ở phòng nào
-      providers: [{ provide: OCCUPANCY_SELF_SCOPE, useValue: fakeResolver }],
-    }).compile();
+    // Thay resolver thật của ContractsModule: ai đang ở phòng nào do test quyết định (kiểm tra riêng RoomAccessGuard).
+    // Luồng thật (hợp đồng → người ở → phòng) được kiểm tra trong contracts.e2e-spec.ts.
+    const moduleFixture = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(OCCUPANCY_SELF_SCOPE)
+      .useValue(fakeResolver)
+      .compile();
     const nestApp = moduleFixture.createNestApplication<NestExpressApplication>({ rawBody: true, bodyParser: false });
     await configureApp(nestApp, nestApp.get(AppConfigService));
     await nestApp.init();

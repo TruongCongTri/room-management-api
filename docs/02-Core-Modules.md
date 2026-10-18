@@ -256,7 +256,7 @@ getRoomDetail(@Param('id', ParseUUIDStrictPipe) id: string) {
 | `POST /tenants` | `tenants:create:department` | Idempotent; one profile per person |
 | `GET /tenants?q=&minor=` | `tenants:read:department` | Name without diacritics or exact phone; masked IDs |
 | `GET /tenants/lookup?idCardNumber=` | `tenants:read:department` | Blind index; every lookup audited |
-| `GET /tenants/{id}` | `tenants:read:department` | Masked detail |
+| `GET /tenants/{id}` | `tenants:read:department` | Masked detail + `currentOccupancy` (room / contract the person lives in now) |
 | `PATCH /tenants/{id}` | `tenants:update:department` | Corrections; merged profile re-validated; optimistic `version` |
 | `GET /tenants/me` | `tenants:read:own` | The tenant's own profile (linked at move-in) |
 
@@ -1185,7 +1185,7 @@ export class CheckoutSettlementService {
 ```
  [Co-occupant moves in]  POST /contracts/{id}/occupants
    lock checkout:contract:{id} → assertCanAddOccupant (ID, consent, capacity, not active elsewhere)
-   → insert occupant (CO_OCCUPANT, ACTIVE, residency PENDING_DECLARATION, residence channel from ID type)
+   → insert occupant (CO_OCCUPANT, ACTIVE, residency PENDING_DECLARATION, residence channel from the nationality)
    → outbox occupant.moved_in + residence.declaration_required → CT01 PDF for THIS person
 
  [Co-occupant moves out]  POST /contracts/{id}/occupants/{occupantId}/move-out
@@ -1250,7 +1250,7 @@ export class ContractOccupancyService {
             movedInAt: dto.movedInAt,
             successionOrder: dto.successionOrder ?? null,
             relationshipToHolder: dto.relationshipToHolder ?? null,
-            residenceChannel: residenceChannelFor(person.idDocumentType),
+            residenceChannel: residenceChannelFor(person), // nationality: VN → CT01, foreigner → temporary residence declaration
             residencyStatus: ResidencyStatus.PENDING_DECLARATION,
           }),
         );
@@ -1346,7 +1346,78 @@ export class ContractOccupancyService {
 }
 ```
 
-Error responses of these endpoints: `BIZ_OCCUPANT_ID_DOCUMENT_REQUIRED`, `BIZ_PDPL_CONSENT_REQUIRED`, `BIZ_OCCUPANT_LIMIT_EXCEEDED`, `BIZ_OCCUPANT_ALREADY_ACTIVE`, `BIZ_OCCUPANT_NOT_ACTIVE`, `BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE` (with reasons `UNDERAGE`, `MISSING_ID_DOCUMENT`, `MISSING_PDPL_CONSENT`, `NOT_ACTIVE`), `BIZ_PRIMARY_HOLDER_SUCCESSOR_REQUIRED`, `BIZ_LAST_OCCUPANT_REQUIRES_CHECKOUT`.
+Error responses of these endpoints: `BIZ_OCCUPANT_ID_DOCUMENT_REQUIRED`, `BIZ_PDPL_CONSENT_REQUIRED`, `BIZ_OCCUPANT_LIMIT_EXCEEDED`, `BIZ_OCCUPANT_ALREADY_ACTIVE`, `BIZ_OCCUPANT_NOT_ACTIVE`, `BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE` (with reasons `UNDERAGE`, `MISSING_ID_DOCUMENT`, `MISSING_PDPL_CONSENT`, `NOT_ACTIVE`), `BIZ_PRIMARY_HOLDER_SUCCESSOR_REQUIRED`, `BIZ_LAST_OCCUPANT_REQUIRES_CHECKOUT`, `BIZ_PRIMARY_HOLDER_USE_TRANSFER` (move-out of the holder), `BIZ_RESIDENCY_TRANSITION_INVALID`.
+
+### 5.5 Lease Lifecycle, Extras & Tenant Access (module 3, decision D8)
+
+#### 5.5.1 Endpoints
+
+| Endpoint | Permission | Notes |
+| :-- | :-- | :-- |
+| `POST /contracts` | `contracts:create:department` | Idempotent. Creates a **DRAFT**; the room becomes `RESERVED` |
+| `GET /contracts?status=&roomId=&tenantId=&endingBefore=` | `contracts:read:department` | Paged list; `tenantId` = holder or any occupant (past or present) |
+| `GET /contracts/mine` | `contracts:read:own` | The contract the signed-in tenant currently lives under |
+| `GET /contracts/{id}` | `contracts:read:department` | Terms, holder (masked ID), deposit balance, rented appliances, services, planned occupants (draft) |
+| `PATCH /contracts/{id}` | `contracts:update:department` | **Draft only**: terms, holder, planned co-occupants, rented appliances; optimistic `version` |
+| `POST /contracts/{id}/activate` | `contracts:execute:department` | Idempotent. Move-in of everybody, deposit collected, room `OCCUPIED` |
+| `POST /contracts/{id}/cancel` | `contracts:execute:department` | Draft only → `CANCELLED`, room back to `AVAILABLE` |
+| `POST /contracts/{id}/renew` | `contracts:execute:department` | Idempotent. New end date, optional new rent and deposit top-up, addendum number |
+| `GET /contracts/{id}/renewals` | `contracts:read:department` | Renewal history |
+| `GET /contracts/{id}/deposit-ledger` | `deposits:read:department` | Immutable ledger, oldest first |
+| `GET` / `POST /contracts/{id}/vehicles`, `POST …/vehicles/{vehicleId}/deactivate` | `contracts:read` / `contracts:update:department` | Vehicles of the occupants (active contract) |
+| `GET` / `POST /contracts/{id}/services`, `PATCH` / `DELETE …/services/{subscriptionId}` | `contracts:read` / `contracts:update:department` | Extra services of a draft or active contract |
+| `GET` / `POST /service-catalog`, `PATCH` / `DELETE /service-catalog/{id}` | `contracts:read` / `contracts:create` / `update` / `delete:department` | Per-building catalogue (Wi-Fi, parking, sanitation…) |
+
+#### 5.5.2 Lifecycle
+
+```
+ POST /contracts (DRAFT)            POST /contracts/{id}/activate (ACTIVE)          POST /contracts/{id}/renew
+   room AVAILABLE | RESERVED          lock room:contract:{roomId} + row lock           lock checkout:contract:{id}
+   no current / draft contract        re-check holder, people, capacity, room          newEndDate > endDate
+   holder eligible on startDate       insert occupants (holder + planned)              contract_renewals row + addendum no.
+   planned people ≤ maxOccupants      deposit PENDING_COLLECTION → HELD + ledger       optional rent change from
+   room → RESERVED (outbox)           room OCCUPIED, current_contract_id               endDate + 1 and deposit TOP_UP
+          │                           tenant accounts + tenants.user_id link           outbox contract.renewed
+          └─ POST …/cancel            outbox contract.activated, occupant.moved_in,
+             → CANCELLED, room          residence.declaration_required, deposit.collected
+               AVAILABLE                self-scope evicted after commit
+```
+
+* **Contract code** `HD-{YYYY}/{NNN}-{room}` (e.g. `HD-2026/007-P302`): per-building yearly sequence taken under a row lock of the building, unique per building. Addenda (holder transfers and renewals share the counter): `PL-{YYYY}/{NNN}-{room}-{NN}`.
+* **Draft:** `monthlyRoomRent` defaults to the room's effective rent, `depositAmount` to one month of rent, `paymentDueDay` to 5 (1–28). `endDate > startDate`. The holder must be eligible on `startDate` (adult, ID document, consent — same reasons as a holder transfer); planned co-occupants exist in the building, appear once, are not the holder, and holder + planned ≤ `rooms.max_occupants`. Rented appliances must be installed in that room and not `BROKEN`; their fee is snapshotted. Only one draft and one active contract per room (partial unique indexes); the room may be `AVAILABLE` or manually `RESERVED`, never `MAINTENANCE` or `OCCUPIED` (`409 BIZ_ROOM_NOT_AVAILABLE`). While a draft exists, the room's status cannot be changed by hand.
+* **Activation:** `pcccCommitmentSigned` must be true (`422 BIZ_PCCC_COMMITMENT_REQUIRED`); `endDate` not in the past. Every person moves in on their planned `movedInAt` (default `startDate`, between `startDate` and `endDate`). People still living in another room → `409 BIZ_OCCUPANT_ALREADY_ACTIVE` (details name the person); the partial unique index catches races. The deposit becomes `HELD` with an `INITIAL_COLLECTION` row naming the holder (no row for a zero deposit). Rented appliances get their handover condition at this moment. Adults with a phone get a tenant account (`TenantAccountProvisioningService`, same transaction) and their profile is linked (`tenants.user_id`) unless another profile in the building already uses that login.
+* **Renewal:** active contracts only. The rent in force changes on `effectiveDate = old endDate + 1` (billing prices each period with the rent of the term it falls in, from `contract_renewals`). `topUpDeposit = true` brings the deposit up to one month of the new rent with a `TOP_UP` row (nothing when the balance already covers it).
+* **Room limits that follow the contract:** a room's `maxOccupants` cannot be lowered below its current active occupants (`409 BIZ_OCCUPANT_LIMIT_EXCEEDED`); an installed unit rented under a draft or active contract cannot be moved or removed (`409 BIZ_ASSET_UNDER_CONTRACT`).
+
+#### 5.5.3 Vehicles and services
+
+* **Catalogue** (`service_catalogs`): `code` (`WIFI`, `PARKING_MOTORBIKE` …, unique per building), `chargeUnit` `PER_ROOM_MONTH` | `PER_PERSON_MONTH` | `PER_VEHICLE_MONTH`, `defaultUnitPrice`, `isProratableOnCheckout`; a per-vehicle item names its `vehicleType` (one item per vehicle type). `chargeUnit` / `vehicleType` cannot change, and an item cannot be deleted, while a contract subscribes to it (`409 BIZ_SERVICE_IN_USE`).
+* **Contract services:** the price is agreed per contract (`agreedUnitPrice`, default the catalogue price). Quantity: `PER_ROOM_MONTH` is set by the manager (default 1); `PER_PERSON_MONTH` always equals the active occupants (planned people for a draft); `PER_VEHICLE_MONTH` subscriptions are created, counted and removed by the vehicles themselves — setting them by hand → `409 BIZ_SERVICE_QUANTITY_DERIVED`.
+* **Vehicles:** active contracts only; the owner must be an active occupant of that contract. Plates are normalised (upper case, single spaces) and unique among active vehicles of the building, like parking cards; bicycles need no plate. Registering or deactivating a vehicle recomputes the matching parking subscription; an occupant moving out (or the outgoing holder) deactivates their vehicles on the move-out date.
+
+#### 5.5.4 Residence per person
+
+`PENDING_DECLARATION → SUBMITTED → REGISTERED` while living there; `DEREGISTRATION_PENDING → DEREGISTERED` after moving out (`409 BIZ_RESIDENCY_TRANSITION_INVALID` otherwise). `REGISTERED` needs `temporaryStayValidUntil` (after today, at most 2 years — Residence Law 2020, Art. 27). Moving out from `PENDING_DECLARATION` (never declared) goes straight to `DEREGISTERED`; any other state → `DEREGISTRATION_PENDING`. Every change recomputes `registered_evn_quota_headcount` and emits `residence.status_changed`.
+
+#### 5.5.6 How modules 0–3 work together (cross-check, decision D9)
+
+| Interaction | Rule | Where |
+| :-- | :-- | :-- |
+| Move-in → login | Adults with a phone get (or reuse, by phone) a TENANT account in the same transaction; the profile is linked (`tenants.user_id`). A **new** account (`PENDING_ACTIVATION`) gets an `ACCOUNT_INVITATION` SMS **after commit** (`occupant.moved_in` → `ContractNotificationsListener`) | `OccupantAccountsService`, `TenantAccountProvisioningService` |
+| Move-in / move-out / transfer → access | Room scope **and** the permission cache of every linked user are evicted after commit: a staff member who also rents gets the tenant view at once, a leaver loses it at once | `ContractsService`, `ContractOccupancyService` |
+| Holder change → people | `contract.primary_holder_changed` → `PRIMARY_HOLDER_CHANGED` SMS to the new holder, the remaining occupants and the outgoing holder | `ContractNotificationsListener` |
+| Profile correction → occupancy | The active holder cannot be corrected into a minor (`422 BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE`, checked before the guardian rule); a nationality correction moves the current stay to the matching residence channel | `TenantsService.update` |
+| Residence channel | Follows the **nationality**: Vietnamese citizens use CT01 even when identified by a passport; foreigners use the temporary-residence declaration | `residenceChannelFor()` |
+| Contract → room / public site | Every draft, activation, cancellation, occupancy change evicts the `rooms` tag after commit: staff vacancy summary and the portfolio site's cached availability refresh | `ROOMS_TAG` |
+| Contract → assets | Units rented by a draft / active contract cannot be moved or removed; the inventory list flags them (`rentedUnderContractId`) | `AssetsService` |
+| Audit | Business changes are saved as entities (vehicle deactivation, profile ↔ login link, EVN quota recompute, service quantities, handover condition) so each audit row names its record and carries the diff | doc 01 §Audit |
+
+Endpoints added by the cross-check (D9): `GET /users/{id}`, `GET /assets/room-assignments` (inventory), `PATCH /contracts/{id}/vehicles/{vehicleId}`, `q` on `GET /contracts`, `currentOccupancy` on `GET /tenants/{id}` and `/tenants/me`.
+
+#### 5.5.5 Tenant access
+
+`ContractOccupancySelfScopeResolver` replaces the default `OCCUPANCY_SELF_SCOPE`: the tenant's profile (`tenants.user_id`) → an `ACTIVE` occupant row → an `ACTIVE` contract → room. It drives `GET /properties/rooms/mine`, `GET /properties/rooms/{id}` (own room only) and `GET /contracts/mine`. The cached scope (`auth:self-scope:{buildingId}:{userId}`) is evicted **after commit** whenever that person moves in or out or the holder changes, so access ends with the move-out. Room detail (D3) now carries `activeContract` (code, holder name and phone, active occupant count, rent, deposit balance, dates) from the same single query.
+
 
 ---
 

@@ -1,6 +1,6 @@
 # Document 05: Feature & Compliance Matrix (`05-Features-List.md`)
 
-This document is the functional, security and statutory-compliance feature matrix of the 80-room flat rental platform. It summarises the supporting modules (`01-Supporting-Modules.md`), the domain services (`02-Core-Modules.md`), the PostgreSQL schema (`03-Database.md`) and the OpenAPI specification (`04-Swagger-API.md`).
+This document is the functional, security and statutory-compliance feature matrix of the 80-room flat rental platform. It summarises the supporting modules (`01-Supporting-Modules.md`), the domain services (`02-Core-Modules.md`), the PostgreSQL schema (`03-Database.md`) and the OpenAPI specification (`04-Swagger-API.md`). **Section 6 is the frontend map**: client conventions, every screen of the four client apps with its endpoints and build status, the values to render and the error codes to handle.
 
 > **Shared rooms.** One room is rented under **one contract** but can be shared by **several people**. Every person — contract holder, roommates, family members, children — has their own profile, their own ID document (CCCD, a child's 12-digit personal identification number, or a passport) and their own temporary-residence declaration. Exactly **one** person is the contract holder (*người đứng tên*). When the holder moves out while others stay, the contract — and its holder CCCD — passes to the next eligible occupant.
 
@@ -16,7 +16,7 @@ This document is the functional, security and statutory-compliance feature matri
 | A2 | **OTP second factor for finance roles** | `LANDLORD`, `ACCOUNTANT` | Decree 13/2023/NĐ-CP (technical safeguards) | `202` challenge → `POST /auth/login/mfa`. 6-digit OTP, HMAC-hashed in Redis, 5 min, 5 attempts, 60 s cooldown, 20 login codes per day; SMS (Zalo first when the account is linked to Zalo) |
 | A3 | **Account activation & password reset by OTP** | All roles | — | `POST /auth/otp/request` (always `202`), `POST /auth/activate`, `POST /auth/password/reset` (revokes every session) |
 | A4 | **Sessions you can see and end** | All roles | — | 15-min access JWT + opaque refresh token rotated on every use; re-use of an old refresh token revokes the session and alerts the user. `GET /auth/sessions`, `DELETE /auth/sessions/{id}`, `POST /auth/logout`, `POST /auth/logout-all`; revoked tokens stop working at once (Redis denylist) |
-| A5 | **Accounts follow real roles** | `LANDLORD` (staff); automatic (tenants) | Law 91/2025/QH15 (data minimisation) | Landlord creates staff accounts with roles and buildings (`POST /users`, `PATCH /users/{id}`). Every adult occupant with a phone gets a `TENANT` login when they move in, linked to their own profile; children and people without a phone get none |
+| A5 | **Accounts follow real roles** | `LANDLORD` (staff); automatic (tenants) | Law 91/2025/QH15 (data minimisation) | Landlord creates staff accounts with roles and buildings (`POST /users`, `GET /users`, `GET /users/{id}`, `PATCH /users/{id}`). Every adult occupant with a phone gets a `TENANT` login when they move in, linked to their own profile, and an invitation SMS to activate it; children and people without a phone get none. A staff member who also rents keeps one account with both roles |
 | A6 | **A tenant sees only the room they live in** | `TENANT` | Law 91/2025/QH15 (purpose limitation) | `rooms:read:own`: `GET /properties/rooms/mine`, or `/{id}` of that same room. Any other room → `403`; access ends the moment they move out (self-scope cache evicted). No room list, no vacancy data |
 
 ### 1.1 Properties & Assets
@@ -26,7 +26,7 @@ This document is the functional, security and statutory-compliance feature matri
 | 01 | **Room directory (80 rooms)** | `LANDLORD`, `PROPERTY_MANAGER`, `GUARD` | Housing Law 2023 (No. 27/2023/QH15) | `GET /properties/rooms`: paginated `SelectQueryBuilder` on `idx_rooms_bld_status_type` / `idx_rooms_available_covering`, 6-field projection, no sequential scans |
 | 02 | **Vacancy summary by room type** | `LANDLORD`, `PROPERTY_MANAGER`, `ACCOUNTANT` | — (operational KPI) | One `GROUP BY` query cached as `cache:{buildingId}:rooms:vacancies:summary` (single-flight + XFetch), invalidated through tag `tag:{buildingId}:rooms` on check-in, checkout and holder changes |
 | 03 | **Room detail in one query** | `LANDLORD`, `PROPERTY_MANAGER`; `TENANT` (own room only, A6) | Civil Code 2015 | Room, room type, active contract, **current contract holder**, **number of people living there** and **number with registered residence**, rented appliances — one joined query (no N+1) |
-| 04 | **Appliance & furniture catalogue** | `LANDLORD`, `PROPERTY_MANAGER` (tenant: own room, read) | Civil Code 2015, Art. 472–482 | `assets → room_assets → contract_assets`: serial numbers, condition grades (`GRADE_A_NEW`, `GRADE_B_GOOD`, `GRADE_C_FAIR`, `BROKEN`), replacement values, monthly rental fees. `GET/POST /assets`, `PATCH /assets/{id}`; install `POST /assets/room-assignments`, re-grade / re-price / move `PATCH …/{id}`, remove `DELETE …/{id}` (soft delete) |
+| 04 | **Appliance & furniture catalogue** | `LANDLORD`, `PROPERTY_MANAGER` (tenant: own room, read) | Civil Code 2015, Art. 472–482 | `assets → room_assets → contract_assets`: serial numbers, condition grades (`GRADE_A_NEW`, `GRADE_B_GOOD`, `GRADE_C_FAIR`, `BROKEN`), replacement values, monthly rental fees. `GET/POST /assets`, `PATCH /assets/{id}`; inventory `GET /assets/room-assignments` (by room, item, serial / QR scan, condition; flags units rented under a contract), install `POST /assets/room-assignments`, re-grade / re-price / move `PATCH …/{id}`, remove `DELETE …/{id}` (soft delete); rented units cannot be moved or removed |
 | 04a | **Buildings** | `LANDLORD` | Tax Administration Law 38/2019/QH14 (tax code), Decree 52/2024 (cashless payments, VietQR) | `GET/POST /properties/buildings`, `PATCH /properties/buildings/{id}`: address, landlord tax code, VietQR bank account, electricity billing mode, water rate, room capacity (default 80). The creator is granted access to the new building |
 | 04b | **Room types & rooms** | `LANDLORD`, `PROPERTY_MANAGER` | Housing Law 2023 | `GET/POST /properties/room-types`, `PATCH …/{id}` (base rent; cached `catalogs:pricing`); `POST /properties/rooms` (never above the building's capacity), `PATCH /properties/rooms/{id}`: price override, type, capacity, status `AVAILABLE` / `RESERVED` / `MAINTENANCE` (`OCCUPIED` only through contracts), realtime `room.status_changed` |
 | 04c | **Public listing for the portfolio website** | Anyone (prospective tenants, students) — no sign-in | Law 91/2025/QH15 (no personal data published); Consumer Protection Law 2023 (accurate price information) | `GET /public/buildings`, `…/{slug}`, `…/{slug}/room-types`, `…/{slug}/floors`, `…/{slug}/rooms` (search by type, floor, price, area, capacity, availability), `…/{slug}/rooms/{roomNumber}` (equipment and monthly fees), `…/{slug}/vacancies`, `…/{slug}/assets`. Only listed buildings / rooms; availability only `AVAILABLE` / `UNAVAILABLE`; no occupants, contracts, serials, landlord, tax or bank data. Per-building cache evicted by staff changes, `Cache-Control` + `ETag`, per-IP throttling, kill switch `public_listing` (on by default, `404` when off). Landlord publishes with `isPubliclyListed` + `publicSlug`; managers can hide single rooms |
@@ -35,14 +35,15 @@ This document is the functional, security and statutory-compliance feature matri
 
 | # | Feature | Roles | Legal anchor | Implementation |
 | :-- | :-- | :-- | :-- | :-- |
-| 05 | **One profile and one ID document per person** | `PROPERTY_MANAGER` | Law 91/2025/QH15, Decree 13/2023/NĐ-CP, Law on Identification 2023 | Every occupant — including children (personal identification number) and foreigners (passport) — has a `tenants` row. The ID number is encrypted with `FieldEncryptionTransformer` (AES-256-GCM, versioned keys); `id_card_hash` (HMAC-SHA256, `BLIND_INDEX_PEPPER`) gives exact, duplicate-safe lookups without decryption. One profile per building, reused when the person changes rooms. `POST /tenants`, `GET /tenants` (search by name without diacritics or phone), `GET /tenants/lookup` (blind index, audited), `GET` / `PATCH /tenants/{id}`, `GET /tenants/me`. CCCD digits checked against gender and year of birth; masked everywhere, never decrypted outside the CT01 builder |
+| 05 | **One profile and one ID document per person** | `PROPERTY_MANAGER` | Law 91/2025/QH15, Decree 13/2023/NĐ-CP, Law on Identification 2023 | Every occupant — including children (personal identification number) and foreigners (passport) — has a `tenants` row. The ID number is encrypted with `FieldEncryptionTransformer` (AES-256-GCM, versioned keys); `id_card_hash` (HMAC-SHA256, `BLIND_INDEX_PEPPER`) gives exact, duplicate-safe lookups without decryption. One profile per building, reused when the person changes rooms. `POST /tenants`, `GET /tenants` (search by name without diacritics or phone), `GET /tenants/lookup` (blind index, audited), `GET` / `PATCH /tenants/{id}` (with `currentOccupancy`: the room and contract the person lives in now), `GET /tenants/me`. Corrections of someone living under a contract stay consistent: the active holder cannot become a minor, a nationality correction moves the stay to the right residence channel. CCCD digits checked against gender and year of birth; masked everywhere, never decrypted outside the CT01 builder |
 | 06 | **Verifiable consent per person** | `TENANT`, `PROPERTY_MANAGER` | Law 91/2025/QH15; Decree 13/2023/NĐ-CP, Art. 20 (children) | `pdpl_consent_accepted_at` / `pdpl_consent_version` for everyone; for a child, consent given by a parent or guardian (`consent_guardian_tenant_id`); anonymisation after statutory retention (`pii_auto_anonymization` flag) |
-| 07 | **Concurrency-safe lease activation** | `LANDLORD`, `PROPERTY_MANAGER` | Housing Law 2023, Civil Code 2015 | Lock `lock:{buildingId}:room:contract:{roomId}` + partial unique index `idx_unique_active_contract_per_room`. The holder and all initial co-occupants are registered in the same transaction |
+| 07 | **Concurrency-safe lease activation** | `LANDLORD`, `PROPERTY_MANAGER` | Housing Law 2023, Civil Code 2015 | Lock `lock:{buildingId}:room:contract:{roomId}` + partial unique index `idx_unique_active_contract_per_room`. The holder and all planned co-occupants are moved in in the same transaction; adults with a phone get a tenant account |
+| 07b | **Lease lifecycle: draft → active → renewed** | `LANDLORD`, `PROPERTY_MANAGER` (`ACCOUNTANT` 🔍) | Civil Code 2015, Art. 472–482; Housing Law 2023 | `POST /contracts` (draft, room `RESERVED`, one draft per room), `PATCH /contracts/{id}` (draft only), `POST …/activate`, `POST …/cancel`, `POST …/renew` (addendum, rent from the next term, optional deposit top-up), `GET /contracts`, `GET /contracts/{id}`, `GET /contracts/mine` (tenant), `GET …/renewals`. Contract code `HD-{YYYY}/{NNN}-{room}` per building |
 | 08 | **1-month deposit escrow (*tiền đặt cọc*)** | `LANDLORD`, `PROPERTY_MANAGER`, `ACCOUNTANT` | Civil Code 2015, Art. 328 | `depositStatus = HELD` on check-in; immutable `deposit_ledgers` (collection, deductions, checkout offset, refunds, holder-transfer movements), each row naming the person who paid or received (`counterparty_tenant_id`) |
 | 09 | **Shared room: occupants move in and out** | `PROPERTY_MANAGER` | Residence Law 2020; Housing Law 2023 | `POST /contracts/{id}/occupants`, `POST …/occupants/{occupantId}/move-out`. ID document and consent required; capacity `rooms.max_occupants`; a person lives in one room at a time (`idx_occupants_tenant_one_active`). Rent and deposit are per room and do not change. A leaving occupant's vehicles are deactivated and parking subscriptions reduced |
 | 10 | **Exactly one contract holder (*người đứng tên*)** | `LANDLORD`, `PROPERTY_MANAGER` | Civil Code 2015 | `idx_occupants_one_active_holder` + deferred trigger `trg_contract_primary_holder_consistency`: `contracts.primary_tenant_id` always equals the single active `PRIMARY_HOLDER` occupant (checked at commit) |
 | 11 | **Contract-holder succession when the holder moves out** | `LANDLORD`, `PROPERTY_MANAGER` | Civil Code 2015, Art. 20 (capacity), Art. 370 (transfer of obligations needs the landlord's consent) | `POST /contracts/{id}/primary-holder/transfer`. Successor = the person the parties named (must be eligible), else the lowest agreed `succession_order`, else the earliest move-in. Eligible = still living there, 18+ on the effective date, ID document and consent. The contract keeps its terms; the holder CCCD changes. `contract_holder_transfers` history, addendum PDF signed by landlord, outgoing and incoming holder, deposit `CARRY_OVER` or `REFUND_AND_RECOLLECT`, outstanding balance recorded. Last occupant → checkout instead (`BIZ_LAST_OCCUPANT_REQUIRES_CHECKOUT`); only minors left → blocked (`BIZ_PRIMARY_HOLDER_SUCCESSOR_REQUIRED`) |
-| 12 | **Vehicles & extra services** | `PROPERTY_MANAGER` | Residence Law 2020; Circular 09/2023/TT-BCT | `tenant_vehicles` (owner = an occupant; motorbike / e-bike / car plates, parking cards), `contract_services` (Wi-Fi, parking, sanitation) |
+| 12 | **Vehicles & extra services** | `PROPERTY_MANAGER` | Residence Law 2020; Circular 09/2023/TT-BCT | Service catalogue per building (`/service-catalog`: per room / per person / per vehicle type). `contract_services` with agreed prices; per-person quantity = active occupants, per-vehicle quantity = active vehicles of that type (automatic). `tenant_vehicles` (owner = an active occupant; normalised plates and parking cards unique among active vehicles; bicycles without plate; corrections with `PATCH …/vehicles/{vehicleId}`), deactivated when the owner moves out |
 
 ### 1.3 Metering
 
@@ -107,9 +108,11 @@ Every endpoint passes `JwtAuthGuard → CustomThrottlerGuard → RolesGuard → 
 | Rooms & room types (create, price, status) | `rooms:create/update:department` | ✅ GLOBAL | ✅ | ❌ | ❌ | ❌ |
 | Appliance catalogue & installed units | `assets:manage:department` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN room (in room detail) |
 | Person profiles & encrypted CCCD | `tenants:manage:department` / `tenants:read:own` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN profile |
-| Lease creation & activation | `contracts:manage:department` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN contract |
+| Lease draft, activation, cancellation & renewal | `contracts:manage:department` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN contract (`/contracts/mine`) |
+| Service catalogue, contract services & vehicles | `contracts:manage:department` | ✅ GLOBAL | ✅ | 🔍 | ❌ | ❌ |
+| Deposit ledger | `deposits:read:department` | ✅ GLOBAL | 🔍 | 🔍 | ❌ | ❌ |
 | **Occupant move-in / move-out** | `contracts:manage:department` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN occupancy |
-| **Contract-holder transfer** | `contracts:manage:department` | ✅ GLOBAL | ✅ | 🔍 history | ❌ | 🔍 OWN contract history |
+| **Contract-holder transfer** | `contracts:manage:department` | ✅ GLOBAL | ✅ | 🔍 history | ❌ | 🔍 OWN contract (`/contracts/mine` shows the current holder; the transfer history is staff-only for now) |
 | Meter photo presigned URL | `meters:upload:department` | ✅ GLOBAL | ✅ | ❌ | ✅ | ❌ |
 | Meter reading submission | `meters:create:department` | ✅ GLOBAL | ✅ | 🔍 | ✅ | 🔍 OWN room |
 | Meter reset approval | `meters:approve:department` | ✅ GLOBAL | ✅ | ✅ | ❌ | ❌ |
@@ -183,3 +186,128 @@ A tenant user is linked to their own person profile (`tenants.user_id`), so `OWN
 |  PCCC insurance & equipment expiry; WORM audit with 90-day archival                             |
 +------------------------------------------------------------------------------------------------+
 ```
+
+---
+
+## 6. Frontend Map (for the client apps)
+
+### 6.1 Conventions every client follows
+
+| Topic | Rule |
+| :-- | :-- |
+| Base & headers | `/api/v1`. `Authorization: Bearer <access token>`; `X-Building-ID: <uuid>` on every building-scoped route (all except `/auth/*`, `/users*`, `/public/*`); `Idempotency-Key: <uuid>` on routes marked ⚑ below — generate one per user action and **reuse it on retry** (same key + same body → same response; same key + other body → `422 REQ_IDEMPOTENCY_PAYLOAD_MISMATCH`). `Accept-Language: vi` (default) / `en` / `ja` / `ko` (or `?lang=`) selects the language of `message` |
+| Success envelope | `{ success: true, statusCode, data, meta: { traceId, timestamp, durationMs, pagination? } }`; lists carry `meta.pagination { page, limit, totalItems, totalPages, hasNextPage, hasPreviousPage }` (`page` from 1, `limit` ≤ 100) |
+| Error envelope | `{ success: false, statusCode, errorCode, message, details?, traceId, timestamp, path }` (plus RFC 7807 `type`, `title`, `instance`). Switch on **`errorCode`** (stable), show `message` (localised), map `details[].field` to form fields (`details[].message` or `issue` explains). Quote `traceId` in support tickets |
+| Sign-in | `POST /auth/login` → `200` tokens, or `202 { mfaRequired, challengeId, otpSentTo }` → `POST /auth/login/mfa` (landlord, accountant). Access token 15 min; `POST /auth/refresh` returns a **new** refresh token every time — always store the latest. `401 AUTH_TOKEN_EXPIRED` → refresh once and retry; `AUTH_SESSION_REVOKED` / `AUTH_REFRESH_TOKEN_REUSED` → sign out. After a landlord creates a building, refresh to receive it in the token. Building switcher = the `buildingIds` of `GET /auth/me` |
+| Optimistic locking | Editable records return `version`; send it back on `PATCH` → `409 RES_CONCURRENCY_CONFLICT` means "changed by someone else, reload". `409 RES_LOCKED` = another operation on the same room / contract is running: retry in a moment |
+| Rate limits | `429` with `Retry-After` (seconds): show a countdown. OTP resend after 60 s; 5 activation / reset codes per number per day |
+| Values | Money = **integer VND**; dates `YYYY-MM-DD` (Vietnam calendar); timestamps ISO-8601 UTC; ids UUID; ID numbers are always masked (`********1234`) — the API never returns full CCCD / passport / bank numbers |
+| Public site | No token, no building header; `ETag` + `If-None-Match` → `304`; `404 RES_FEATURE_DISABLED` when the site is switched off |
+
+### 6.2 Screens and endpoints
+
+Status: ✅ built and tested · ⏳ module 4 (metering) · ⏳5 module 5 (billing & checkout) · ⏳6 module 6 (compliance VN). ⚑ = send `Idempotency-Key`.
+
+**Admin web (landlord, property manager, accountant)**
+
+| Screen | Endpoints | Who (doc 05 §3) | Notes | Status |
+| :-- | :-- | :-- | :-- | :-- |
+| Sign-in, MFA, forgot password | `POST /auth/login`, `/auth/login/mfa`, `/auth/otp/request` (`RESET_PASSWORD`), `/auth/password/reset` | all | Lock `423 AUTH_ACCOUNT_LOCKED` + `Retry-After` | ✅ |
+| My account & devices | `GET /auth/me`, `POST /auth/password/change`, `GET /auth/sessions`, `DELETE /auth/sessions/{id}`, `POST /auth/logout`, `/auth/logout-all` | all | `me.permissions` drives menu visibility | ✅ |
+| Staff & tenant accounts | `GET /users?role=&status=&buildingId=`, `GET /users/{id}`, ⚑`POST /users`, `PATCH /users/{id}` | landlord | Tenant accounts: status only (enable / disable) | ✅ |
+| Buildings & publishing | `GET /properties/buildings`, ⚑`POST`, `PATCH /properties/buildings/{id}` | landlord | `isPubliclyListed` + `publicSlug` publish the portfolio site | ✅ |
+| Dashboard | `GET /properties/rooms/vacancies/summary`, `GET /contracts?status=ACTIVE&endingBefore=` (renewals due) | landlord, manager, accountant | Realtime `room.status_changed` over WebSocket when enabled | ✅ |
+| Room types | `GET /properties/room-types`, ⚑`POST`, `PATCH …/{id}` | landlord, manager | | ✅ |
+| Room directory & detail | `GET /properties/rooms?status=&roomTypeId=&floor=&sortBy=`, ⚑`POST`, `GET` / `PATCH /properties/rooms/{id}` | landlord, manager (accountant, guard read) | Detail = type, equipment, `activeContract` (holder, occupants, deposit held). Status `OCCUPIED` is never set by hand; locked while a draft holds the room | ✅ |
+| Equipment catalogue & inventory | `GET /assets`, ⚑`POST /assets`, `PATCH /assets/{id}`, `GET /assets/room-assignments?roomId=&assetId=&serialNumber=&conditionGrade=`, ⚑`POST /assets/room-assignments`, `PATCH` / `DELETE …/{id}` | landlord, manager (accountant read) | Disable move / remove when `rentedUnderContractId` is set | ✅ |
+| People | `GET /tenants?q=&minor=`, `GET /tenants/lookup?idCardNumber=`, ⚑`POST /tenants`, `GET` / `PATCH /tenants/{id}` | landlord, manager (accountant read) | Duplicate ID → `409` with the existing `tenantId` (offer "open profile"); `currentOccupancy` shows where they live | ✅ |
+| Service catalogue | `GET /service-catalog`, `POST`, `PATCH` / `DELETE /service-catalog/{id}` | landlord, manager (accountant read) | Per-vehicle items need a vehicle type | ✅ |
+| Contracts list | `GET /contracts?status=&roomId=&tenantId=&q=&endingBefore=` | landlord, manager, accountant | `q` = part of the code or room number | ✅ |
+| New lease (draft) | ⚑`POST /contracts`, `PATCH /contracts/{id}`, `POST …/cancel` | landlord, manager | Pick room (`AVAILABLE` / `RESERVED`), holder + planned people from People, rented units from the room's inventory | ✅ |
+| Activate lease | ⚑`POST /contracts/{id}/activate` | landlord, manager | Needs the signed PCCC commitment; on `409 BIZ_OCCUPANT_ALREADY_ACTIVE` show `details[].tenantId` | ✅ |
+| Contract detail | `GET /contracts/{id}`, `/occupants?status=`, `/deposit-ledger`, `/renewals`, `/primary-holder/history`, `/vehicles?status=`, `/services` | landlord, manager, accountant (ledger: + deposits) | Tabs: terms, people & residence, deposit, vehicles, services, history | ✅ |
+| Renew | ⚑`POST /contracts/{id}/renew` | landlord, manager | New rent applies from the day after the current end | ✅ |
+| Move in / move out | ⚑`POST /contracts/{id}/occupants`, ⚑`POST …/occupants/{occupantId}/move-out` | landlord, manager | Holder → use "Transfer contract" | ✅ |
+| Transfer contract holder | ⚑`POST /contracts/{id}/primary-holder/transfer` | landlord, manager | Show eligible successors (adults living there); last occupant → checkout (⏳5) | ✅ |
+| Residence per person | `PATCH /contracts/{id}/occupants/{occupantId}/residency` | landlord, manager | Offer only the next step (`details.allowed` on error) | ✅ |
+| Vehicles & services | ⚑`POST …/vehicles`, `PATCH …/vehicles/{vehicleId}`, `POST …/vehicles/{vehicleId}/deactivate`, ⚑`POST …/services`, `PATCH` / `DELETE …/services/{subscriptionId}` | landlord, manager | Quantity editable only when `quantitySource = MANUAL` | ✅ |
+| Audit log | `GET /audit-logs` | landlord, manager, accountant (guard / tenant: own actions) | | ✅ |
+| Meter readings & missing rooms | `/metering/presigned-url`, `/metering/records`, `/metering/cycles/{month}/missing-rooms` | manager, accountant (approve resets) | | ⏳ |
+| Invoices, payments, checkout | `/billing/checkout/execute`, `/webhooks/payments/vietqr`, invoices | accountant, landlord | | ⏳5 |
+| Documents, residence queue, tax, PCCC | `/compliance-vn/*` | landlord, manager, accountant | Lease / handover / settlement / addendum PDFs, CT01 per person, 01/BĐS export | ⏳6 |
+
+**Guard app**
+
+| Screen | Endpoints | Notes | Status |
+| :-- | :-- | :-- | :-- |
+| Sign-in | `POST /auth/login`, `GET /auth/me` | | ✅ |
+| Rooms | `GET /properties/rooms`, `GET /properties/rooms/{id}` | Read only | ✅ |
+| Meter photo round | `GET /metering/cycles/{month}/missing-rooms`, `POST /metering/presigned-url`, ⚑`POST /metering/records` | | ⏳ |
+
+**Tenant app**
+
+| Screen | Endpoints | Notes | Status |
+| :-- | :-- | :-- | :-- |
+| Activate account (from the invitation SMS) | `POST /auth/otp/request` (`ACTIVATE_ACCOUNT`), `POST /auth/activate` | Password policy errors in `details[].issue` | ✅ |
+| Sign-in, forgot password, devices | `/auth/login`, `/auth/otp/request` (`RESET_PASSWORD`), `/auth/password/reset`, `/auth/sessions` | | ✅ |
+| Home | `GET /auth/me` (`residence`: room, contract, role) | `residence = null` → "you are not living in a room of this building" | ✅ |
+| My room | `GET /properties/rooms/mine` | Equipment, holder, people count, deposit held; `404 BIZ_NO_ACTIVE_ROOM` after moving out | ✅ |
+| My contract | `GET /contracts/mine` | Terms, rented appliances, services; no ID numbers of others | ✅ |
+| My profile | `GET /tenants/me` | Masked ID, consent, current occupancy | ✅ |
+| Invoices & payment (VietQR) | invoices billed to me | | ⏳5 |
+| My CT01 / residence | | | ⏳6 |
+
+**Public portfolio website (no sign-in)**
+
+| Screen | Endpoints | Status |
+| :-- | :-- | :-- |
+| Buildings | `GET /public/buildings` | ✅ |
+| Building page | `GET /public/buildings/{slug}`, `…/room-types`, `…/floors`, `…/vacancies`, `…/assets` | ✅ |
+| Room search & room page | `GET /public/buildings/{slug}/rooms?…`, `…/rooms/{roomNumber}` | ✅ |
+| "Manage" button | links to the admin web sign-in | ✅ |
+
+### 6.3 Values to render
+
+| Field | Values | Display hint |
+| :-- | :-- | :-- |
+| Room `status` | `AVAILABLE`, `RESERVED` (draft lease or held by hand), `OCCUPIED` (active contract), `MAINTENANCE` | Public site shows only `AVAILABLE` / `UNAVAILABLE` |
+| Contract `status` | `DRAFT`, `ACTIVE`, `CANCELLED` (draft never started), `TERMINATED`, `EXPIRED` (⏳5) | |
+| `depositStatus` | `PENDING_COLLECTION` (draft), `HELD`, `PARTIALLY_REFUNDED`, `FULLY_REFUNDED`, `FORFEITED` | `depositBalance` = current balance |
+| Ledger `transactionType` | `INITIAL_COLLECTION`, `TOP_UP`, `HOLDER_TRANSFER_CARRY_OVER` (0 VND, deposit now owed to the successor), `HOLDER_TRANSFER_REFUND`, `HOLDER_TRANSFER_COLLECTION`, `CHECKOUT_DEDUCTION`, `SURPLUS_REFUND`, `FORFEITURE` | `amount` signed (+ in, − out) |
+| Occupant `role` / `status` | `PRIMARY_HOLDER` (người đứng tên), `CO_OCCUPANT` / `ACTIVE`, `MOVED_OUT` | Holder listed first |
+| `residencyStatus` | `PENDING_DECLARATION` → `SUBMITTED` → `REGISTERED`; after moving out `DEREGISTRATION_PENDING` → `DEREGISTERED` | Only `REGISTERED` counts for the EVN quota |
+| `residenceChannel` | `CT01` (Vietnamese), `FOREIGNER_TEMPORARY_RESIDENCE` | |
+| Service `chargeUnit` / `quantitySource` | `PER_ROOM_MONTH` / `MANUAL`, `PER_PERSON_MONTH` / `OCCUPANTS`, `PER_VEHICLE_MONTH` / `VEHICLES` | |
+| `vehicleType` | `MOTORBIKE`, `ELECTRIC_BIKE`, `BICYCLE` (no plate), `CAR` | |
+| `conditionGrade` | `GRADE_A_NEW`, `GRADE_B_GOOD`, `GRADE_C_FAIR`, `BROKEN` (cannot be rented) | |
+| User `status` | `PENDING_ACTIVATION`, `ACTIVE`, `DISABLED` | |
+
+### 6.4 Error codes the screens handle
+
+| `errorCode` | HTTP | When | Suggested UI |
+| :-- | :-- | :-- | :-- |
+| `REQ_VALIDATION_ERROR` | 400 | Field rules (`details[].field`) | Inline field errors |
+| `REQ_MISSING_IDEMPOTENCY_KEY` / `REQ_IDEMPOTENCY_PAYLOAD_MISMATCH` | 400 / 422 | ⚑ route without key / key reused with other data | Client bug — new key per action |
+| `AUTH_CREDENTIALS_INVALID`, `AUTH_ACCOUNT_LOCKED`, `AUTH_ACCOUNT_DISABLED` | 401 / 423 / 403 | Sign-in | Generic message; countdown from `Retry-After` |
+| `AUTH_OTP_INVALID` / `AUTH_OTP_EXPIRED` / `AUTH_OTP_TOO_MANY_ATTEMPTS` / `AUTH_OTP_RATE_LIMITED` | 400 / 400 / 429 / 429 | OTP steps | `details[].attemptsRemaining`; resend countdown |
+| `AUTH_PASSWORD_POLICY_VIOLATION` | 422 | New password | List `details[].issue` |
+| `AUTH_TOKEN_EXPIRED` / `AUTH_SESSION_REVOKED` / `AUTH_REFRESH_TOKEN_REUSED` | 401 | Any call | Refresh once / sign out |
+| `AUTH_FORBIDDEN_RESOURCE`, `AUTH_TENANT_MISMATCH` | 403 | No permission / building not in token | Hide the action; refresh token after building changes |
+| `RES_NOT_FOUND` | 404 | Record of another building or deleted | "Not found" page |
+| `RES_ALREADY_EXISTS` | 409 | Codes, room numbers, serials, plates, parking cards, subscriptions | Highlight `details[].field` |
+| `RES_CONCURRENCY_CONFLICT`, `RES_LOCKED` | 409 | Stale `version` / operation in progress | Reload / retry |
+| `BIZ_ROOM_NOT_AVAILABLE`, `BIZ_ROOM_HAS_ACTIVE_CONTRACT` | 409 | New draft / activation | Show the room status (`details[].status`, `issue: DRAFT_EXISTS`) |
+| `BIZ_ROOM_STATUS_TRANSITION_INVALID` | 409 | Status by hand on an occupied / draft-held room | Explain "changes through the contract" |
+| `BIZ_BUILDING_CAPACITY_EXCEEDED`, `BIZ_OCCUPANT_LIMIT_EXCEEDED` | 409 | Room count / people per room | Show the limit from `details` |
+| `BIZ_TENANT_ID_CARD_DUPLICATE` | 409 | Same ID twice | Link to `details[].tenantId` |
+| `BIZ_PDPL_CONSENT_REQUIRED`, `BIZ_TENANT_GUARDIAN_INVALID` | 422 | Consent / child's guardian | Consent checkbox, guardian picker |
+| `BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE` | 422 | Holder under 18 / no ID / no consent (`details[].issue`) | Explain per reason |
+| `BIZ_PRIMARY_HOLDER_SUCCESSOR_REQUIRED`, `BIZ_LAST_OCCUPANT_REQUIRES_CHECKOUT`, `BIZ_PRIMARY_HOLDER_USE_TRANSFER` | 409 | Holder leaving | Register an adult / go to checkout (⏳5) / open the transfer dialog |
+| `BIZ_OCCUPANT_ALREADY_ACTIVE`, `BIZ_OCCUPANT_NOT_ACTIVE` | 409 | Person in another room / already moved out | Name the person (`details[].tenantId`) |
+| `BIZ_CONTRACT_NOT_DRAFT`, `BIZ_CONTRACT_NOT_ACTIVE` | 409 | Action not allowed in this contract status | Refresh the contract |
+| `BIZ_PCCC_COMMITMENT_REQUIRED` | 422 | Activation | Tick "PCCC commitment signed" on the draft |
+| `BIZ_RESIDENCY_TRANSITION_INVALID` | 409 | Residence step out of order | Offer `details[].allowed` |
+| `BIZ_SERVICE_QUANTITY_DERIVED`, `BIZ_SERVICE_IN_USE` | 409 | Typed quantity of an automatic service / catalogue item used by contracts | Make the field read-only |
+| `BIZ_ASSET_UNDER_CONTRACT` | 409 | Move / remove a rented unit | Disable when `rentedUnderContractId` is set |
+| `BIZ_NO_ACTIVE_ROOM` | 404 | Tenant not living in this building | Empty state |
+| `RES_FEATURE_DISABLED` | 404 | Public site switched off | Maintenance page |

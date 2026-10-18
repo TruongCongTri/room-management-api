@@ -4,6 +4,7 @@ import { Auditable } from '../../../infrastructure/audit/decorators/auditable.de
 import { Building } from './building.entity';
 import { RoomType } from './room-type.entity';
 import { RoomAsset } from '../../assets/entities/room-asset.entity';
+import { Contract } from '../../contracts/entities/contract.entity';
 
 export enum RoomStatus {
   AVAILABLE = 'AVAILABLE',
@@ -69,10 +70,18 @@ export class Room extends BuildingScopedEntity {
   @Column({ type: 'enum', enum: RoomStatus, default: RoomStatus.AVAILABLE })
   status: RoomStatus;
 
-  /** Hợp đồng đang hiệu lực - FK tới contracts được thêm ở migration Contracts (module 3) */
+  /** Hợp đồng đang hiệu lực (đặt khi kích hoạt, gỡ khi trả phòng) */
   @Column({ type: 'uuid', nullable: true })
   @Index('uq_rooms_current_contract', { unique: true, where: '"current_contract_id" IS NOT NULL' })
   currentContractId?: string | null;
+
+  /** FK tổng hợp cùng tòa nhà (module 3) */
+  @ManyToOne(() => Contract, { onDelete: 'RESTRICT' })
+  @JoinColumn([
+    { name: 'building_id', referencedColumnName: 'buildingId', foreignKeyConstraintName: 'fk_rooms_current_contract_same_building' },
+    { name: 'current_contract_id', referencedColumnName: 'id', foreignKeyConstraintName: 'fk_rooms_current_contract_same_building' },
+  ])
+  currentContract?: Contract | null;
 
   /** false = ẩn phòng khỏi website giới thiệu (/public/*) */
   @Column({ type: 'boolean', default: true })

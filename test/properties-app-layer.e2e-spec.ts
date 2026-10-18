@@ -4,6 +4,7 @@
  * quên lọc building_id, dữ liệu tòa nhà khác sẽ lộ ra ở đây. Lớp thứ hai (RLS với app_user): properties.e2e-spec.ts.
  */
 import './disable-outbox-poller';
+import './app-layer-e2e-env';
 import { INestApplication } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
@@ -21,7 +22,6 @@ import { JwtTokenService } from '../src/core/security/jwt/jwt-token.service';
 let phoneCounter = 0;
 const uniquePhone = () => `+${Date.now()}${String(phoneCounter++ % 100).padStart(2, '0')}`;
 
-process.env.THROTTLE_LIMIT = '10000';
 
 describe('Properties & Assets - app-layer building isolation (RLS bypassed by a superuser)', () => {
   let app: INestApplication<App>;
@@ -141,5 +141,56 @@ describe('Properties & Assets - app-layer building isolation (RLS bypassed by a 
     // Người giám hộ phải thuộc CÙNG tòa nhà - kiểm tra ở tầng ứng dụng (RLS bị bỏ qua ở đây)
     const child = person({ idCardNumber: `079315${String(Math.floor(Math.random() * 1e6)).padStart(6, '0')}`, gender: 'FEMALE', dateOfBirth: '2015-03-02', phone: null, consentGuardianTenantId: parentB.id });
     expect((await post(a, child).expect(422)).body.errorCode).toBe('BIZ_TENANT_GUARDIAN_INVALID');
+  });
+
+  it("should never show, use or change another building's contracts, people, units or services (module 3)", async () => {
+    const a = await world();
+    const b = await world();
+    let n = 0;
+    const personIn = async (w: typeof a) =>
+      (
+        await http.post('/api/v1/tenants').set(w.h).set('Idempotency-Key', randomUUID()).send({
+          fullName: `Iso ${n}`,
+          idDocumentType: 'CCCD',
+          idCardNumber: `079095${String(Math.floor(Math.random() * 1e6)).padStart(6, '0')}`,
+          gender: 'MALE',
+          dateOfBirth: '1995-05-05',
+          phone: `093${String((Date.now() + n++ * 7919) % 1e7).padStart(7, '0')}`,
+          hometownAddress: 'x',
+          permanentAddress: 'x',
+          pdplConsentAccepted: true,
+        }).expect(201)
+      ).body.data;
+    const post = (w: typeof a, path: string, body: object) => http.post(`/api/v1${path}`).set(w.h).set('Idempotency-Key', randomUUID()).send(body);
+    const term = { startDate: '2026-01-01', endDate: '2027-12-31', pcccCommitmentSigned: true };
+    const [holderA, holderB] = [await personIn(a), await personIn(b)];
+    const catalogB = (await http.post('/api/v1/service-catalog').set(b.h).send({ code: 'WIFI', name: 'Wi-Fi', chargeUnit: 'PER_ROOM_MONTH', defaultUnitPrice: 1 }).expect(201)).body.data;
+    const contractB = (await post(b, '/contracts', { ...term, roomId: b.room.id, primaryTenantId: holderB.id }).expect(201)).body.data;
+    await post(b, `/contracts/${contractB.id}/activate`, {}).expect(201);
+
+    // Người, phòng, thiết bị của tòa B không dùng được cho hợp đồng tòa A
+    expect((await post(a, '/contracts', { ...term, roomId: a.room.id, primaryTenantId: holderB.id }).expect(404)).body.details[0].field).toBe('primaryTenantId');
+    expect((await post(a, '/contracts', { ...term, roomId: a.room.id, primaryTenantId: holderA.id, coOccupants: [{ tenantId: holderB.id }] }).expect(404)).body.details[0].field).toBe('coOccupants[0].tenantId');
+    expect((await post(a, '/contracts', { ...term, roomId: b.room.id, primaryTenantId: holderA.id }).expect(404)).body.details[0].field).toBe('roomId');
+    expect((await post(a, '/contracts', { ...term, roomId: a.room.id, primaryTenantId: holderA.id, rentedRoomAssetIds: [b.unit.id] }).expect(404)).body.details[0].field).toBe('rentedRoomAssetIds');
+
+    // Hợp đồng tòa B: không đọc, không đổi từ tòa A
+    for (const path of ['', '/occupants', '/deposit-ledger', '/renewals', '/vehicles', '/services', '/primary-holder/history']) {
+      await http.get(`/api/v1/contracts/${contractB.id}${path}`).set(a.h).expect(404);
+    }
+    expect((await http.get('/api/v1/contracts').set(a.h).expect(200)).body.data.map((c: any) => c.id)).not.toContain(contractB.id);
+    await post(a, `/contracts/${contractB.id}/renew`, { newEndDate: '2028-12-31' }).expect(404);
+    await post(a, `/contracts/${contractB.id}/services`, { serviceCatalogId: catalogB.id }).expect(404);
+
+    // Hợp đồng tòa A: người / dịch vụ tòa B không gắn được
+    const contractA = (await post(a, '/contracts', { ...term, roomId: a.room.id, primaryTenantId: holderA.id }).expect(201)).body.data;
+    await post(a, `/contracts/${contractA.id}/activate`, {}).expect(201);
+    expect((await post(a, `/contracts/${contractA.id}/occupants`, { tenantId: holderB.id, movedInAt: '2026-01-02' }).expect(404)).body.details[0].field).toBe('tenantId');
+    expect((await post(a, `/contracts/${contractA.id}/services`, { serviceCatalogId: catalogB.id }).expect(404)).body.details[0].field).toBe('serviceCatalogId');
+    expect((await http.get('/api/v1/service-catalog').set(a.h).expect(200)).body.data.map((c: any) => c.id)).not.toContain(catalogB.id);
+    await http.patch(`/api/v1/service-catalog/${catalogB.id}`).set(a.h).send({ name: 'Hijack' }).expect(404);
+    await http.delete(`/api/v1/service-catalog/${catalogB.id}`).set(a.h).expect(404);
+    // Chi tiết phòng của tòa A chỉ kèm hợp đồng của chính nó
+    expect((await http.get(`/api/v1/properties/rooms/${a.room.id}`).set(a.h).expect(200)).body.data.activeContract.id).toBe(contractA.id);
   });
 });

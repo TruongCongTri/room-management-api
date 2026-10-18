@@ -51,8 +51,8 @@ export interface RoomDetail {
   roomTypeName: string;
   priceOverride: number | null;
   effectiveRent: number;
-  /** Hợp đồng hiệu lực: được bổ sung bởi ContractsModule (module 3, quyết định D3) */
-  activeContract: null;
+  /** Hợp đồng hiệu lực của phòng (quyết định D3, hoàn chỉnh ở module 3) */
+  activeContract: ActiveContractSummary | null;
   isPubliclyListed: boolean;
   rentedAssets: Array<{
     roomAssetId: string;
@@ -63,6 +63,18 @@ export interface RoomDetail {
     monthlyFee: number;
   }>;
   version: number;
+}
+
+export interface ActiveContractSummary {
+  id: string;
+  contractCode: string;
+  primaryTenantName: string;
+  primaryTenantPhone: string | null;
+  occupantCount: number;
+  monthlyRoomRent: number;
+  depositHeld: number;
+  startDate: string;
+  endDate: string;
 }
 
 export interface VacancySummaryItem {
@@ -259,6 +271,7 @@ export class PropertiesService {
           if (dto.version !== undefined && dto.version !== room.version) throw staleVersion();
 
           const previousStatus = room.status;
+          const draftPeople = await this.draftPeople(manager, room.id);
           if (dto.status !== undefined && dto.status !== room.status) {
             if (room.status === RoomStatus.OCCUPIED || room.currentContractId) {
               throw new ConflictException({
@@ -267,7 +280,25 @@ export class PropertiesService {
                 details: [{ field: 'status', issue: 'ROOM_OCCUPIED', from: room.status, to: dto.status }],
               });
             }
+            if (draftPeople !== null) {
+              throw new ConflictException({
+                errorCode: SystemErrorCode.BIZ_ROOM_STATUS_TRANSITION_INVALID,
+                message: 'The room is reserved by a draft contract; activate or cancel the draft.',
+                details: [{ field: 'status', issue: 'ROOM_RESERVED_BY_DRAFT', from: room.status, to: dto.status }],
+              });
+            }
             room.status = dto.status;
+          }
+          if (dto.maxOccupants !== undefined && dto.maxOccupants < room.maxOccupants) {
+            // Không hạ sức chứa xuống dưới số người đang ở / dự kiến ở (tài liệu 02, mục 5.5.2)
+            const people = Math.max(draftPeople ?? 0, await this.activeOccupants(manager, room));
+            if (dto.maxOccupants < people) {
+              throw new ConflictException({
+                errorCode: SystemErrorCode.BIZ_OCCUPANT_LIMIT_EXCEEDED,
+                message: `${people} people live (or will live) in this room.`,
+                details: [{ field: 'maxOccupants', issue: 'BELOW_CURRENT_OCCUPANTS', occupants: people }],
+              });
+            }
           }
           if (dto.roomTypeId !== undefined) room.roomTypeId = (await this.findRoomType(manager, dto.roomTypeId)).id;
           if (dto.roomNumber !== undefined && dto.roomNumber !== room.roomNumber) {
@@ -304,24 +335,54 @@ export class PropertiesService {
 
   // ---------------------------------------------------------------------------
 
+  /** Số người của bản nháp đang giữ phòng (người đứng tên + dự kiến), null = không có bản nháp */
+  private async draftPeople(manager: EntityManager, roomId: string): Promise<number | null> {
+    const rows: Array<{ people: number }> = await manager.query(
+      `SELECT 1 + jsonb_array_length(COALESCE(planned_co_occupants, '[]'::jsonb)) AS people FROM contracts
+        WHERE room_id = $1 AND building_id = $2 AND status = 'DRAFT' AND deleted_at IS NULL`,
+      [roomId, this.buildingId()],
+    );
+    return rows.length ? Number(rows[0].people) : null;
+  }
+
+  private async activeOccupants(manager: EntityManager, room: Room): Promise<number> {
+    if (!room.currentContractId) return 0;
+    const [row]: Array<{ n: number }> = await manager.query(
+      `SELECT COUNT(*)::int AS n FROM contract_occupants WHERE contract_id = $1 AND building_id = $2 AND status = 'ACTIVE' AND deleted_at IS NULL`,
+      [room.currentContractId, this.buildingId()],
+    );
+    return Number(row.n);
+  }
+
   private async findRoomType(manager: EntityManager, roomTypeId: string): Promise<RoomType> {
     const roomType = await manager.getRepository(RoomType).findOne({ where: { id: roomTypeId, buildingId: this.buildingId() } });
     if (!roomType) throw notFound('Room type', 'roomTypeId');
     return roomType;
   }
 
+  /** Mandate #2 + D3: phòng, hạng phòng, thiết bị, hợp đồng hiệu lực, người đứng tên, số người ở, tiền cọc - MỘT truy vấn */
   private async loadDetail(manager: EntityManager, roomId: string): Promise<RoomDetail> {
-    const room = await manager
+    const { entities, raw } = await manager
       .createQueryBuilder(Room, 'r')
       .innerJoinAndSelect('r.roomType', 'rt')
       .leftJoinAndSelect('r.roomAssets', 'ra', 'ra.deleted_at IS NULL')
       .leftJoinAndSelect('ra.asset', 'a')
+      .leftJoinAndSelect('r.currentContract', 'c', `c.status = 'ACTIVE'`)
+      .leftJoin('c.primaryTenant', 'pt')
+      .addSelect(['pt.id', 'pt.fullName', 'pt.phone'])
+      .addSelect(
+        `(SELECT COUNT(*) FROM contract_occupants co WHERE co.contract_id = c.id AND co.status = 'ACTIVE' AND co.deleted_at IS NULL)::int`,
+        'active_occupant_count',
+      )
+      .addSelect(`COALESCE((SELECT l.balance_after FROM deposit_ledgers l WHERE l.contract_id = c.id ORDER BY l.entry_no DESC LIMIT 1), 0)`, 'deposit_held')
       .where('r.id = :roomId AND r.building_id = :buildingId', { roomId, buildingId: this.buildingId() })
       .orderBy('a.category', 'ASC')
       .addOrderBy('a.name', 'ASC')
       .addOrderBy('ra.serial_number', 'ASC')
-      .getOne();
+      .getRawAndEntities();
+    const room = entities[0];
     if (!room) throw notFound('Room');
+    const contract = room.currentContract;
 
     return {
       id: room.id,
@@ -334,7 +395,19 @@ export class PropertiesService {
       roomTypeName: room.roomType!.name,
       priceOverride: toNumber(room.priceOverride),
       effectiveRent: toNumber(room.priceOverride ?? room.roomType!.baseMonthlyRent)!,
-      activeContract: null,
+      activeContract: contract
+        ? {
+            id: contract.id,
+            contractCode: contract.contractCode,
+            primaryTenantName: contract.primaryTenant!.fullName,
+            primaryTenantPhone: contract.primaryTenant!.phone ?? null,
+            occupantCount: Number(raw[0].active_occupant_count),
+            monthlyRoomRent: toNumber(contract.monthlyRoomRent)!,
+            depositHeld: Number(raw[0].deposit_held),
+            startDate: contract.startDate,
+            endDate: contract.endDate,
+          }
+        : null,
       isPubliclyListed: room.isPubliclyListed,
       rentedAssets: (room.roomAssets ?? []).map((ra) => ({
         roomAssetId: ra.id,

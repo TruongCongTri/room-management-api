@@ -14,7 +14,7 @@ import { EncryptionService } from '../../../core/security/encryption/encryption.
 import { SystemErrorCode } from '../../../common/constants/error-codes.constant';
 import { AuditWriterService } from '../../../infrastructure/audit/services/audit-writer.service';
 import { AuditAction } from '../../../infrastructure/audit/interfaces/audit.interface';
-import { IdDocumentType } from '../../contracts/domain/occupancy.enums';
+import { IdDocumentType, residenceChannelFor } from '../../contracts/domain/occupancy.enums';
 import { InvalidPhoneNumberError, normalizePhoneNumber } from '../../identity/domain/phone-number';
 import { isUniqueViolation, staleVersion, vietnamToday } from '../../properties/properties.helpers';
 import { Tenant } from '../entities/tenant.entity';
@@ -59,7 +59,20 @@ export interface TenantDetailView extends TenantSafeView {
   pdplConsentVersion: string;
   guardian: { id: string; fullName: string } | null;
   hasLogin: boolean;
+  /** Nơi người này ĐANG ở (module 3), null = không ở phòng nào của tòa nhà */
+  currentOccupancy: CurrentOccupancy | null;
   version: number;
+}
+
+export interface CurrentOccupancy {
+  occupantId: string;
+  contractId: string;
+  contractCode: string;
+  roomId: string;
+  roomNumber: string;
+  role: 'PRIMARY_HOLDER' | 'CO_OCCUPANT';
+  movedInAt: string;
+  residencyStatus: string;
 }
 
 @Injectable()
@@ -242,8 +255,21 @@ export class TenantsService {
           throw this.invalidGuardian('This person is the guardian of a child and cannot become a minor');
         }
         if (merged.consentGuardianTenantId === tenant.id) throw this.invalidGuardian('A person cannot be their own guardian');
+        const occupancy = await this.activeOccupancy(manager, tenant);
+        if (occupancy?.role === 'PRIMARY_HOLDER' && isMinorOn(merged.dateOfBirth, today)) {
+          throw new UnprocessableEntityException({
+            errorCode: SystemErrorCode.BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE,
+            message: 'This person holds an active contract and must be an adult; transfer the contract first.',
+            details: [{ field: 'dateOfBirth', issue: 'UNDERAGE' }],
+          });
+        }
         this.assertGuardianRequirement(merged, today);
         if (merged.consentGuardianTenantId) await this.assertValidGuardian(manager, merged.consentGuardianTenantId, today);
+        // Sửa quốc tịch → kênh khai báo tạm trú của lần ở hiện tại (CT01 / người nước ngoài)
+        const channel = residenceChannelFor(merged);
+        if (occupancy && channel !== residenceChannelFor(tenant)) {
+          await manager.query(`UPDATE contract_occupants SET residence_channel = $2, updated_at = now() WHERE id = $1`, [occupancy.id, channel]);
+        }
 
         if (idNumber !== tenant.idCardEncrypted || merged.idDocumentType !== tenant.idDocumentType) {
           const idCardHash = this.encryption.computeBlindIndex(idNumber);
@@ -300,6 +326,15 @@ export class TenantsService {
     if (requirement === 'FORBIDDEN') throw this.invalidGuardian('Only a minor has a consent guardian');
   }
 
+  /** Lần ở hiện tại của người này (module 3): người đứng tên phải là người thành niên, kênh cư trú theo quốc tịch */
+  private async activeOccupancy(manager: EntityManager, tenant: Tenant): Promise<{ id: string; role: string } | undefined> {
+    const [occupancy]: Array<{ id: string; role: string }> = await manager.query(
+      `SELECT id, role FROM contract_occupants WHERE tenant_id = $1 AND building_id = $2 AND status = 'ACTIVE' AND deleted_at IS NULL`,
+      [tenant.id, tenant.buildingId],
+    );
+    return occupancy;
+  }
+
   /** Người giám hộ: hồ sơ CÙNG tòa nhà, đã thành niên, đã đồng ý (mọi hồ sơ đều có đồng ý khi tạo) */
   private async assertValidGuardian(manager: EntityManager, guardianId: string, today: string): Promise<void> {
     const guardian = await manager.getRepository(Tenant).findOne({ where: { id: guardianId, buildingId: this.buildingId() } });
@@ -327,6 +362,15 @@ export class TenantsService {
       .where('t.id = :id AND t.building_id = :b', { id, b: this.buildingId() })
       .getOne();
     if (!tenant) throw this.notFound();
+    const [occupancy]: CurrentOccupancy[] = await manager.query(
+      `SELECT co.id AS "occupantId", c.id AS "contractId", c.contract_code AS "contractCode", r.id AS "roomId", r.room_number AS "roomNumber",
+              co.role, to_char(co.moved_in_at, 'YYYY-MM-DD') AS "movedInAt", co.residency_status AS "residencyStatus"
+         FROM contract_occupants co
+         JOIN contracts c ON c.id = co.contract_id AND c.status = 'ACTIVE'
+         JOIN rooms r ON r.id = c.room_id
+        WHERE co.tenant_id = $1 AND co.building_id = $2 AND co.status = 'ACTIVE' AND co.deleted_at IS NULL`,
+      [tenant.id, tenant.buildingId],
+    );
     return {
       ...this.safeView(tenant, vietnamToday()),
       nationality: tenant.nationality,
@@ -343,6 +387,7 @@ export class TenantsService {
       pdplConsentVersion: tenant.pdplConsentVersion,
       guardian: tenant.consentGuardian ? { id: tenant.consentGuardian.id, fullName: tenant.consentGuardian.fullName } : null,
       hasLogin: !!tenant.userId,
+      currentOccupancy: occupancy ?? null,
       version: tenant.version,
     };
   }

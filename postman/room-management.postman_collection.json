@@ -214,7 +214,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"0919 999 998\",\n  \"password\": \"{{password}}\"\n}",
+              "raw": "{\n  \"phone\": \"{{unknownLoginPhone}}\",\n  \"password\": \"{{password}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -223,6 +223,16 @@
             }
           },
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Số chưa đăng ký mới mỗi lần chạy: số lạ cũng bị khóa sau 5 lần sai (chống dò tài khoản)",
+                  "pm.environment.set('unknownLoginPhone', '0919' + Math.floor(100000 + Math.random() * 899999));"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -1327,7 +1337,7 @@
           ]
         },
         {
-          "name": "25 Me - tenant sees own-scope permissions only",
+          "name": "25 Me - tenant sees own-scope permissions and the room they live in",
           "request": {
             "method": "GET",
             "header": [
@@ -1368,7 +1378,9 @@
                   "  pm.response.to.have.status(200);",
                   "  pm.expect(json.data.permissions).to.include('rooms:read:own');",
                   "  pm.expect(json.data.permissions).to.not.include('rooms:read:department');",
-                  "  pm.expect(json.data.residence).to.eql(null);",
+                  "});",
+                  "pm.test('residence = seeded P.101 contract (module 3 resolver)', () => {",
+                  "  pm.expect(json.data.residence).to.include({ roomNumber: 'P.101', occupantRole: 'PRIMARY_HOLDER' });",
                   "});"
                 ]
               }
@@ -1735,6 +1747,54 @@
           ]
         },
         {
+          "name": "31b Users - detail of the new guard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{newStaffId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{newStaffId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 same account, masked phone', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data).to.include({ id: pm.environment.get('newStaffId'), status: 'PENDING_ACTIVATION' });",
+                  "  pm.expect(json.data.phoneMasked).to.match(/^091\\*{4}\\d{3}$/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "32 Users - list guards of my buildings",
           "request": {
             "method": "GET",
@@ -1881,7 +1941,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"0919 999 997\",\n  \"purpose\": \"ACTIVATE_ACCOUNT\"\n}",
+              "raw": "{\n  \"phone\": \"{{unknownPhone}}\",\n  \"purpose\": \"ACTIVATE_ACCOUNT\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1890,6 +1950,16 @@
             }
           },
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Số chưa đăng ký mới mỗi lần chạy: số lạ cũng bị tính hạn mức 5 mã / ngày (chống dò tài khoản)",
+                  "pm.environment.set('unknownPhone', '0919' + Math.floor(100000 + Math.random() * 899999));"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -3386,7 +3456,7 @@
           ]
         },
         {
-          "name": "19 Tenant - /rooms/mine before moving in → 404",
+          "name": "19 Tenant - /rooms/mine → the room they live in (seeded contract, module 3)",
           "request": {
             "method": "GET",
             "header": [
@@ -3427,7 +3497,8 @@
                   "  });",
                   "};",
                   "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
-                  "expectError(404, 'BIZ_NO_ACTIVE_ROOM');"
+                  "",
+                  "pm.test('200 P.101', () => { pm.response.to.have.status(200); pm.expect(json.data.roomNumber).to.eql('P.101'); });"
                 ]
               }
             }
@@ -7106,6 +7177,2659 @@
               "path": [
                 "tenants",
                 "{{tenantId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(403, 'AUTH_FORBIDDEN_RESOURCE');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 Contracts (lease lifecycle, occupants, deposit)",
+      "item": [
+        {
+          "name": "01 Login - property manager A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{pmPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const day = (offset) => new Date(Date.now() + 7 * 3600 * 1000 + offset * 86400000).toISOString().slice(0, 10);",
+                  "pm.environment.set('today', day(0));",
+                  "pm.environment.set('leaseStart', day(-30));",
+                  "pm.environment.set('leaseEnd', day(335));",
+                  "pm.environment.set('stayUntil', day(365));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('pmAccessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 Login - guard A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{guardPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('guardAccessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 Login - tenant A (lives in P.101 since the seed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{tenantPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('tenantAccessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 Pick a 1BR and a studio (floors 2-7)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms?status=AVAILABLE&sortBy=roomNumber&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "AVAILABLE"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "roomNumber"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "// Folder 02 checks floor 1 (P.102), floor 8 and the duplex counts: leave those rooms alone",
+                  "// 3 people move in → a 1BR Deluxe (up to 3); the draft that gets cancelled can use any studio",
+                  "const free = json.data.filter((r) => r.floor > 1 && r.floor < 8);",
+                  "const lease = free.find((r) => r.roomTypeName === '1BR Deluxe');",
+                  "const other = free.find((r) => r.roomTypeName === 'Studio');",
+                  "pm.test('a free 1BR Deluxe and a free studio on floors 2-7 (re-create the local DB if not)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(lease, '1BR Deluxe').to.be.an('object');",
+                  "  pm.expect(other, 'Studio').to.be.an('object');",
+                  "});",
+                  "pm.environment.set('leaseRoomId', lease.id);",
+                  "pm.environment.set('leaseRoomNumber', lease.roomNumber);",
+                  "pm.environment.set('cancelRoomId', other.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 Service catalogue of the building",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service-catalog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service-catalog"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 seeded services', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const codes = json.data.map((s) => s.code);",
+                  "  ['WIFI', 'SANITATION', 'PARKING_MOTORBIKE'].forEach((c) => pm.expect(codes).to.include(c));",
+                  "  pm.expect(json.data.find((s) => s.code === 'PARKING_MOTORBIKE').vehicleType).to.eql('MOTORBIKE');",
+                  "});",
+                  "json.data.forEach((s) => pm.environment.set('svc_' + s.code, s.id));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06 Catalogue - per-vehicle service without a vehicle type → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/service-catalog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "service-catalog"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"PARKING_TRUCK\",\n  \"name\": \"Xe tải\",\n  \"chargeUnit\": \"PER_VEHICLE_MONTH\",\n  \"defaultUnitPrice\": 500000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(400, 'REQ_VALIDATION_ERROR');",
+                  "pm.test('details on vehicleType', () => pm.expect(json.details[0].field).to.eql('vehicleType'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07 Register the future holder",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Trần Văn Đứng Tên\",\n  \"idDocumentType\": \"CCCD\",\n  \"idCardNumber\": \"{{holderCccd}}\",\n  \"gender\": \"MALE\",\n  \"dateOfBirth\": \"1992-03-03\",\n  \"phone\": \"{{holderPhone}}\",\n  \"hometownAddress\": \"Đà Nẵng\",\n  \"permanentAddress\": \"5 Bạch Đằng, Đà Nẵng\",\n  \"pdplConsentAccepted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('holderCccd', '079092' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0'));",
+                  "pm.environment.set('holderPhone', '091' + Math.floor(1000000 + Math.random() * 8999999));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('holderId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "08 Register the roommate (agreed successor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Lê Thị Bạn Phòng\",\n  \"idDocumentType\": \"CCCD\",\n  \"idCardNumber\": \"{{roommateCccd}}\",\n  \"gender\": \"FEMALE\",\n  \"dateOfBirth\": \"1996-06-06\",\n  \"phone\": \"{{roommatePhone}}\",\n  \"hometownAddress\": \"Đà Nẵng\",\n  \"permanentAddress\": \"5 Bạch Đằng, Đà Nẵng\",\n  \"pdplConsentAccepted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('roommateCccd', '079196' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0'));",
+                  "pm.environment.set('roommatePhone', '093' + Math.floor(1000000 + Math.random() * 8999999));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('roommateId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09 Register the holder's child",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Trần Bé Con\",\n  \"idDocumentType\": \"CCCD\",\n  \"idCardNumber\": \"{{kidCccd}}\",\n  \"gender\": \"FEMALE\",\n  \"dateOfBirth\": \"2016-01-01\",\n  \"phone\": null,\n  \"hometownAddress\": \"Đà Nẵng\",\n  \"permanentAddress\": \"5 Bạch Đằng, Đà Nẵng\",\n  \"pdplConsentAccepted\": true,\n  \"consentGuardianTenantId\": \"{{holderId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('kidCccd', '079316' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 minor', () => { pm.response.to.have.status(201); pm.expect(json.data.isMinor).to.eql(true); });",
+                  "pm.environment.set('kidId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10 Create the draft lease",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{leaseRoomId}}\",\n  \"primaryTenantId\": \"{{holderId}}\",\n  \"startDate\": \"{{leaseStart}}\",\n  \"endDate\": \"{{leaseEnd}}\",\n  \"coOccupants\": [\n    {\n      \"tenantId\": \"{{kidId}}\",\n      \"relationshipToHolder\": \"Con\"\n    },\n    {\n      \"tenantId\": \"{{roommateId}}\",\n      \"successionOrder\": 1,\n      \"relationshipToHolder\": \"Bạn cùng phòng\"\n    }\n  ],\n  \"pcccCommitmentSigned\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 DRAFT with defaults and a per-building code', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.data).to.include({ status: 'DRAFT', depositStatus: 'PENDING_COLLECTION', depositBalance: 0, paymentDueDay: 5, activeOccupantCount: 0 });",
+                  "  pm.expect(json.data.depositAmount).to.eql(json.data.monthlyRoomRent);",
+                  "  pm.expect(json.data.contractCode).to.match(new RegExp('^HD-\\\\d{4}/\\\\d{3,}-' + pm.environment.get('leaseRoomNumber').replace(/[^A-Z0-9]/g, '') + '$'));",
+                  "  pm.expect(json.data.plannedCoOccupants.map((p) => p.tenantId)).to.eql([pm.environment.get('kidId'), pm.environment.get('roommateId')]);",
+                  "});",
+                  "pm.environment.set('contractId', json.data.id);",
+                  "pm.environment.set('contractCode', json.data.contractCode);",
+                  "pm.environment.set('contractVersion', json.data.version);",
+                  "pm.environment.set('monthlyRent', json.data.monthlyRoomRent);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11 Second draft on the same room → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{leaseRoomId}}\",\n  \"primaryTenantId\": \"{{roommateId}}\",\n  \"startDate\": \"{{leaseStart}}\",\n  \"endDate\": \"{{leaseEnd}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(409, 'BIZ_ROOM_NOT_AVAILABLE');",
+                  "pm.test('DRAFT_EXISTS', () => pm.expect(json.details[0].issue).to.eql('DRAFT_EXISTS'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12 Child as holder → 422 UNDERAGE",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{cancelRoomId}}\",\n  \"primaryTenantId\": \"{{kidId}}\",\n  \"startDate\": \"{{leaseStart}}\",\n  \"endDate\": \"{{leaseEnd}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(422, 'BIZ_PRIMARY_HOLDER_NOT_ELIGIBLE');",
+                  "pm.test('UNDERAGE', () => pm.expect(json.details.map((d) => d.issue)).to.include('UNDERAGE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13 Room is RESERVED by the draft",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/{{leaseRoomId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "{{leaseRoomId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('RESERVED, no active contract yet', () => { pm.response.to.have.status(200); pm.expect(json.data).to.include({ status: 'RESERVED', activeContract: null }); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14 Edit the draft (due day 10, stale-safe)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentDueDay\": 10,\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 due day 10', () => { pm.response.to.have.status(200); pm.expect(json.data.paymentDueDay).to.eql(10); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15 Subscribe sanitation (per person)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/services",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "services"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceCatalogId\": \"{{svc_SANITATION}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 quantity = holder + 2 planned', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.data).to.include({ serviceCode: 'SANITATION', quantity: 3, quantitySource: 'OCCUPANTS' });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16 Parking by hand → 409 derived",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/services",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "services"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceCatalogId\": \"{{svc_PARKING_MOTORBIKE}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(409, 'BIZ_SERVICE_QUANTITY_DERIVED');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17 Activate - everybody moves in, deposit held",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "activate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 ACTIVE, deposit HELD, 3 occupants', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.data).to.include({ status: 'ACTIVE', depositStatus: 'HELD', activeOccupantCount: 3, plannedCoOccupants: null });",
+                  "  pm.expect(json.data.depositBalance).to.eql(pm.environment.get('monthlyRent'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "18 Activate again → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "activate"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(409, 'BIZ_CONTRACT_NOT_DRAFT');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "19 Occupants (holder first)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/occupants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "occupants"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('3 people, residence pending, IDs masked', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.map((o) => o.role)).to.eql(['PRIMARY_HOLDER', 'CO_OCCUPANT', 'CO_OCCUPANT']);",
+                  "  json.data.forEach((o) => { pm.expect(o.residencyStatus).to.eql('PENDING_DECLARATION'); pm.expect(o.idCardMasked).to.match(/^\\*{8}\\d{4}$/); });",
+                  "  pm.expect(pm.response.text()).to.not.include(pm.environment.get('holderCccd'));",
+                  "});",
+                  "json.data.forEach((o) => {",
+                  "  if (o.tenantId === pm.environment.get('holderId')) pm.environment.set('holderOccupantId', o.occupantId);",
+                  "  if (o.tenantId === pm.environment.get('roommateId')) pm.environment.set('roommateOccupantId', o.occupantId);",
+                  "  if (o.tenantId === pm.environment.get('kidId')) pm.environment.set('kidOccupantId', o.occupantId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "20 Room detail shows the active contract",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/{{leaseRoomId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "{{leaseRoomId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('OCCUPIED with holder, 3 occupants, deposit held', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.status).to.eql('OCCUPIED');",
+                  "  pm.expect(json.data.activeContract).to.include({ id: pm.environment.get('contractId'), primaryTenantName: 'Trần Văn Đứng Tên', occupantCount: 3 });",
+                  "  pm.expect(json.data.activeContract.depositHeld).to.eql(pm.environment.get('monthlyRent'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "21 Register the holder's motorbike",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/vehicles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "vehicles"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ownerTenantId\": \"{{holderId}}\",\n  \"vehicleType\": \"MOTORBIKE\",\n  \"licensePlate\": \"{{plateTyped}}\",\n  \"brandModel\": \"Honda Vision\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const n = String(Math.floor(10000 + Math.random() * 89999));",
+                  "pm.environment.set('plate', '59-P1 ' + n);",
+                  "pm.environment.set('plateTyped', ' 59-p1   ' + n + ' ');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 plate normalised', () => { pm.response.to.have.status(201); pm.expect(json.data.licensePlate).to.eql(pm.environment.get('plate')); });",
+                  "pm.environment.set('vehicleId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "21b Correct the plate and add a parking card",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/vehicles/{{vehicleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "vehicles",
+                "{{vehicleId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"licensePlate\": \"{{plate2Typed}}\",\n  \"parkingCardCode\": \"pm-{{plateSuffix}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const n = String(Math.floor(10000 + Math.random() * 89999));",
+                  "pm.environment.set('plateSuffix', n);",
+                  "pm.environment.set('plate2', '59-P2 ' + n);",
+                  "pm.environment.set('plate2Typed', '59-p2 ' + n);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 normalised plate and card', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data).to.include({ licensePlate: pm.environment.get('plate2'), parkingCardCode: 'PM-' + pm.environment.get('plateSuffix') });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "22 Services follow people and vehicles",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/services",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "services"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('sanitation 3, parking 1', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const q = Object.fromEntries(json.data.map((s) => [s.serviceCode, s.quantity]));",
+                  "  pm.expect(q).to.eql({ PARKING_MOTORBIKE: 1, SANITATION: 3 });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "23 Residence - roommate SUBMITTED",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/occupants/{{roommateOccupantId}}/residency",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "occupants",
+                "{{roommateOccupantId}}",
+                "residency"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"residencyStatus\": \"SUBMITTED\",\n  \"referenceNo\": \"VNeID-POSTMAN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 SUBMITTED', () => { pm.response.to.have.status(200); pm.expect(json.data.residencyStatus).to.eql('SUBMITTED'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "24 Residence - roommate REGISTERED (1 year)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/occupants/{{roommateOccupantId}}/residency",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "occupants",
+                "{{roommateOccupantId}}",
+                "residency"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"residencyStatus\": \"REGISTERED\",\n  \"temporaryStayValidUntil\": \"{{stayUntil}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 REGISTERED', () => { pm.response.to.have.status(200); pm.expect(json.data.temporaryStayValidUntil).to.eql(pm.environment.get('stayUntil')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "25 Residence - child straight to REGISTERED → 409",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/occupants/{{kidOccupantId}}/residency",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "occupants",
+                "{{kidOccupantId}}",
+                "residency"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"residencyStatus\": \"REGISTERED\",\n  \"temporaryStayValidUntil\": \"{{stayUntil}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(409, 'BIZ_RESIDENCY_TRANSITION_INVALID');",
+                  "pm.test('next allowed step is SUBMITTED', () => pm.expect(json.details[0].allowed).to.eql('SUBMITTED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26 Holder moves out as a co-occupant → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/occupants/{{holderOccupantId}}/move-out",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "occupants",
+                "{{holderOccupantId}}",
+                "move-out"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"movedOutAt\": \"{{today}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(409, 'BIZ_PRIMARY_HOLDER_USE_TRANSFER');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "27 Transfer the contract (holder leaves, deposit carried over)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/primary-holder/transfer",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "primary-holder",
+                "transfer"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"effectiveDate\": \"{{today}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 roommate succeeds (agreed order), child skipped', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.data).to.include({ fromTenantId: pm.environment.get('holderId'), toTenantId: pm.environment.get('roommateId'), selection: 'AUTO_SUCCESSION', depositHandling: 'CARRY_OVER' });",
+                  "  pm.expect(json.data.addendumNo).to.eql(pm.environment.get('contractCode').replace(/^HD-/, 'PL-') + '-01');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "28 Contract after the transfer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('new holder, EVN quota 1, parking gone with the old holder', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.primaryHolder.tenantId).to.eql(pm.environment.get('roommateId'));",
+                  "  pm.expect(json.data).to.include({ activeOccupantCount: 2, registeredEvnQuotaHeadcount: 1 });",
+                  "  pm.expect(json.data.services.map((s) => s.serviceCode)).to.eql(['SANITATION']);",
+                  "  pm.expect(json.data.services[0].quantity).to.eql(2);",
+                  "});",
+                  "pm.environment.set('contractVersion', json.data.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "29 Holder history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/primary-holder/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "primary-holder",
+                "history"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('one transfer', () => { pm.response.to.have.status(200); pm.expect(json.data).to.have.length(1); pm.expect(json.data[0].newHolderIdCardMasked).to.match(/^\\*{8}\\d{4}$/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "30 Renew one more year with a rent increase and deposit top-up",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/renew",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "renew"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newEndDate\": \"{{renewEnd}}\",\n  \"newMonthlyRoomRent\": {{newRent}},\n  \"topUpDeposit\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const end = new Date(pm.environment.get('leaseEnd') + 'T00:00:00Z');",
+                  "end.setUTCFullYear(end.getUTCFullYear() + 1);",
+                  "pm.environment.set('renewEnd', end.toISOString().slice(0, 10));",
+                  "pm.environment.set('newRent', Number(pm.environment.get('monthlyRent')) + 500000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 addendum -02, top-up 500k, new rent from the day after the old end', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.data).to.include({ depositTopUpAmount: 500000, newEndDate: pm.environment.get('renewEnd') });",
+                  "  pm.expect(json.data.addendumNo.slice(-3)).to.eql('-02');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "31 Deposit ledger (immutable, per person)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{contractId}}/deposit-ledger",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{contractId}}",
+                "deposit-ledger"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('collection by holder, carry-over to successor, top-up', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.map((l) => l.transactionType)).to.eql(['INITIAL_COLLECTION', 'HOLDER_TRANSFER_CARRY_OVER', 'TOP_UP']);",
+                  "  pm.expect(json.data[0].counterpartyTenantId).to.eql(pm.environment.get('holderId'));",
+                  "  pm.expect(json.data[1].counterpartyTenantId).to.eql(pm.environment.get('roommateId'));",
+                  "  pm.expect(json.data[2].balanceAfter).to.eql(Number(pm.environment.get('newRent')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "31b Search contracts by code",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts?q={{contractCode}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "{{contractCode}}"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('exactly this contract', () => { pm.response.to.have.status(200); pm.expect(json.data.map((c) => c.id)).to.eql([pm.environment.get('contractId')]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "31c New holder's profile shows where they live",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{roommateId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants",
+                "{{roommateId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('currentOccupancy = this contract, as holder', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.currentOccupancy).to.include({ contractId: pm.environment.get('contractId'), role: 'PRIMARY_HOLDER', residencyStatus: 'REGISTERED' });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "31d Former holder's profile: no current room",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{holderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants",
+                "{{holderId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('currentOccupancy null', () => { pm.response.to.have.status(200); pm.expect(json.data.currentOccupancy).to.eql(null); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "31e Inventory of the leased room",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/assets/room-assignments?roomId={{leaseRoomId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assets",
+                "room-assignments"
+              ],
+              "query": [
+                {
+                  "key": "roomId",
+                  "value": "{{leaseRoomId}}"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 paged list of this room', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  json.data.forEach((u) => pm.expect(u.roomId).to.eql(pm.environment.get('leaseRoomId')));",
+                  "  pm.expect(json.meta.pagination.page).to.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "32 Contracts of the former holder",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts?tenantId={{holderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts"
+              ],
+              "query": [
+                {
+                  "key": "tenantId",
+                  "value": "{{holderId}}"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('found through occupancy history', () => { pm.response.to.have.status(200); pm.expect(json.data.map((c) => c.id)).to.include(pm.environment.get('contractId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "33 Draft on the second room, then cancel it",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{cancelRoomId}}\",\n  \"primaryTenantId\": \"{{holderId}}\",\n  \"startDate\": \"{{leaseStart}}\",\n  \"endDate\": \"{{leaseEnd}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('draftToCancelId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "34 Cancel the draft - room AVAILABLE again",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/{{draftToCancelId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "{{draftToCancelId}}",
+                "cancel"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 CANCELLED', () => { pm.response.to.have.status(201); pm.expect(json.data.status).to.eql('CANCELLED'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "35 Tenant - my contract (no holder ID number)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts/mine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts",
+                "mine"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 seeded P.101 contract', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.contractCode).to.eql('HD-2026/001-P101');",
+                  "  pm.expect(json.data.primaryHolder.idCardMasked).to.eql(undefined);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "36 Tenant - my room shows the contract",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/mine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "mine"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 P.101 with active contract', () => { pm.response.to.have.status(200); pm.expect(json.data.roomNumber).to.eql('P.101'); pm.expect(json.data.activeContract.contractCode).to.eql('HD-2026/001-P101'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "37 Tenant - contract list → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(403, 'AUTH_FORBIDDEN_RESOURCE');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "38 Guard - contracts → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guardAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contracts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contracts"
               ]
             },
             "description": ""

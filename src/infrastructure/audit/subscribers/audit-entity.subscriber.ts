@@ -5,10 +5,12 @@
  * Bảo mật dữ liệu: cột dùng EncryptionTransformer (hộ chiếu, CMND, số thẻ) luôn bị che trong diff -
  * entity trong bộ nhớ chứa giá trị GIẢI MÃ, nếu không che thì audit log sẽ lưu PII dạng rõ.
  *
- * Lưu ý: UPDATE qua QueryBuilder/Repository.update() không nạp bản ghi cũ (databaseEntity) → diff rỗng,
- * vẫn ghi nhận hành động. Dùng repository.save(entity) cho thao tác cần diff đầy đủ.
+ * UPDATE qua QueryBuilder/Repository.update(): TypeORM chỉ đưa các giá trị được SET - không có bản ghi cũ và (thường)
+ * không có khóa chính. Bảng audit là WORM nên KHÔNG ghi dòng không gắn được với bản ghi nào ("unknown"), và bỏ qua
+ * cập nhật chỉ chạm cột kỹ thuật / `exclude` (vd: users.lastLoginAt). Thao tác nghiệp vụ dùng repository.save(entity)
+ * (diff đầy đủ) hoặc ghi audit tường minh (AuthService, TenantAccountProvisioningService).
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   DataSource,
   EntityMetadata,
@@ -27,6 +29,8 @@ import { EncryptionTransformer } from '../../../core/security/encryption/encrypt
 
 @Injectable()
 export class AuditEntitySubscriber implements EntitySubscriberInterface {
+  private readonly logger = new Logger(AuditEntitySubscriber.name);
+
   constructor(
     dataSource: DataSource,
     private readonly auditWriter: AuditWriterService,
@@ -42,6 +46,18 @@ export class AuditEntitySubscriber implements EntitySubscriberInterface {
   }
 
   async afterUpdate(event: UpdateEvent<any>): Promise<void> {
+    if (!event.databaseEntity && event.metadata) {
+      const options = getAuditableOptions(event.metadata.target);
+      if (!options) return;
+      const primaryKeys = event.metadata.primaryColumns.map((column) => column.propertyName ?? 'id');
+      const skip = new Set(['id', 'updatedAt', 'version', ...primaryKeys, ...(options.exclude ?? [])]);
+      const changed = Object.keys(event.entity ?? {}).filter((key) => !skip.has(key));
+      if (changed.length === 0) return;
+      if (this.resolveId(event.metadata, event.entity) === 'unknown') {
+        this.logger.debug(`Bulk UPDATE of ${event.metadata.tableName} (${changed.join(', ')}) not attributable to a row: use save() or explicit audit`);
+        return;
+      }
+    }
     const target = { ...event.databaseEntity, ...event.entity };
     await this.capture(event.metadata, event.manager, AuditAction.UPDATE, target, event.databaseEntity, event.entity);
   }

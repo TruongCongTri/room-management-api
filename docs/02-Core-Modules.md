@@ -42,8 +42,10 @@ src/modules/
 │  
 ├── properties/                           \# Building Layout, Room Tiers, 80 Rooms & Vacancy Engine  
 │   ├── controllers/  
-│   │   └── properties.controller.ts      \# Paginated room list, Room Detail, Cached Vacancy Summary  
+│   │   ├── properties.controller.ts      \# Buildings, room types, room directory, detail, vacancy summary  
+│   │   └── public-listing.controller.ts  \# /public/*: published buildings, room types, floors, rooms, vacancies, equipment (no sign-in)
 │   ├── services/  
+│   │   ├── public-listing.service.ts     \# Slug → building, read-only projections, per-building public cache
 │   │   └── properties.service.ts         \# Index-backed QueryBuilder, XFetch cache & tag invalidation  
 │   ├── guards/
 │   │   └── room-access.guard.ts          \# TENANT: only the room they currently live in (OCCUPANCY_SELF_SCOPE)
@@ -247,6 +249,25 @@ getRoomDetail(@Param('id', ParseUUIDStrictPipe) id: string) {
   * **Consent per person:** `pdplConsentAcceptedAt` / `pdplConsentVersion` for everyone; for a child the consent is given by a parent or guardian (`consentGuardianTenantId`).
 * **Reuse across rooms:** a person who moves to another room in the same building keeps the same profile (unique per building by `id_card_hash`); a person can only be an **active** occupant of one room at a time.
 
+### 2.1b Endpoints & validation rules (module 2, decision D7)
+
+| Endpoint | Permission | Notes |
+| :-- | :-- | :-- |
+| `POST /tenants` | `tenants:create:department` | Idempotent; one profile per person |
+| `GET /tenants?q=&minor=` | `tenants:read:department` | Name without diacritics or exact phone; masked IDs |
+| `GET /tenants/lookup?idCardNumber=` | `tenants:read:department` | Blind index; every lookup audited |
+| `GET /tenants/{id}` | `tenants:read:department` | Masked detail |
+| `PATCH /tenants/{id}` | `tenants:update:department` | Corrections; merged profile re-validated; optimistic `version` |
+| `GET /tenants/me` | `tenants:read:own` | The tenant's own profile (linked at move-in) |
+
+Rules applied on create **and** on every update (the merged profile is checked as a whole):
+
+* **ID number:** normalised (`079 203.001-234` → `079203001234`). CCCD / child's personal ID: 12 digits, nationality `VN` only, digit 4 encodes gender and century (0/1 = male/female born 1900-1999, 2/3 = 2000-2099, 4/5 = 2100-2199) and digits 5-6 the birth year — both must match `gender` and `dateOfBirth` (catches typos and swapped people). Passport: 6-12 letters / digits with at least one digit (international formats). Duplicate → `409 BIZ_TENANT_ID_CARD_DUPLICATE` with the existing id.
+* **Dates:** date of birth not in the future and at most 120 years ago; ID issue date not in the future and not before the date of birth.
+* **Minors & consent:** consent mandatory for everyone (`422 BIZ_PDPL_CONSENT_REQUIRED`). Under 18 today (Vietnam time) → `consentGuardianTenantId` required: an adult, consented profile of the same building, not the child itself and not another minor (`422 BIZ_TENANT_GUARDIAN_INVALID`). Adults: phone required, no guardian. A profile cannot be changed into a minor while it is the guardian of someone else.
+* **Contact:** phone normalised to E.164 (same function as the login phone); e-mail lower-cased; refund bank account 6-19 digits and requires a bank name.
+* **Privacy:** encrypted columns are never selected for reads; responses show `********1234` built from `id_card_last4`. Only a correction loads the stored number, in memory, to re-check it against the new gender / date of birth. Every `/tenants/lookup` is audited with the masked number. `fullNameSearch` (lower-case, no diacritics, `đ → d`) powers the name search.
+
 ### 2.2 Service Implementation (`TenantsService`)
 
 ```ts
@@ -355,6 +376,8 @@ export class TenantsService {
     
 * **Appliance & Furniture Renting (`AssetsModule`):** Tracks individual rentable items (e.g., *Daikin Inverter 1.5HP AC*, *Electrolux Washer*, *Toshiba Fridge*, *Sofa Bed*) via `assets` (catalog) \$\\rightarrow\$ `room_assets` (physical unit with `serialNumber`, `conditionGrade`, and `customMonthlyFee` installed in a room) \$\\rightarrow\$ `contract_assets` (items actively rented by the tenant under a lease).  
     
+* **Management (D5, doc 06):** the landlord registers buildings (the creator gets access in the same transaction); managers create room types and rooms (never more than `totalRoomsCapacity`, the building row is locked while counting), change prices and statuses (`OCCUPIED` is reserved to contracts; changes run under the room's contract lock `LOCK_KEYS.roomContract` and publish `room.status_changed` through the outbox to the realtime dashboard), and install / re-grade / move / remove serial-numbered appliance units. Every change evicts `tag:{buildingId}:rooms` (room-type changes also `tag:{buildingId}:catalogs`).  
+    
 * **Who sees which room:** staff (`rooms:read:department`) see every room of the active building; a `TENANT` (`rooms:read:own`) sees only the room they currently live in (`GET /properties/rooms/mine`, or `/{id}` of that room) — section 2.0.2.  
     
 * **Strict Adherence to the 4 Database & API Optimization Rules:**  
@@ -366,6 +389,37 @@ export class TenantsService {
 3. **Lightweight RESTful Payloads:** `listRooms()` projects only 6 scalar fields (`id`, `roomNumber`, `floor`, `status`, `roomTypeName`, `effectivePrice`), omitting heavy contract histories, audit logs, and encrypted tenant PII.  
      
 4. **Redis XFetch Caching & Tag Invalidation:** `getVacancySummary()` caches aggregated room availability by type in Redis using the **XFetch Probabilistic Early Expiration** algorithm and invalidates via non-blocking Redis `UNLINK` (`tag:{buildingId}:rooms`) whenever a contract is activated or a tenant checks out.
+
+### 3.1b Public Listing for the Portfolio Website (`PublicListingService`, module 1b)
+
+Prospective tenants and students browse the portfolio website without signing in; the same site has a management area that uses the authenticated endpoints. Rules: document 04, section 1.5.
+
+* **Addressing:** building by `publicSlug`, room by `roomNumber`, room type by `code` — no internal ids leave the API.
+* **Publishing:** only buildings with `isPubliclyListed` + `publicSlug`, and their rooms with `isPubliclyListed` (default `true`). Unknown and unpublished slugs give the same `404`.
+* **Privacy:** availability is reduced to `AVAILABLE` / `UNAVAILABLE`; no occupants, contracts, serial numbers, replacement values, landlord, tax or bank data.
+* **Isolation & cost:** slug lookup on the global `buildings` table, then the building's own RLS transaction with explicit `building_id` filters; responses cached per building (`cache:{buildingId}:public:*`, tags `public` / `rooms` / `catalogs` / `assets`, so staff changes refresh the site at once) plus `Cache-Control` / `ETag` for browsers and CDNs; per-IP throttling; kill switch `public_listing`.
+
+```ts
+// src/modules/properties/services/public-listing.service.ts (sketch)
+async searchRooms(slug: string, q: PublicRoomQueryDto) {
+  const building = await this.resolvePublished(slug); // 404 when unknown or not listed
+  return this.context.runWithContext({ tenantId: building.id }, () =>
+    this.cache.getOrSet(`public:rooms:${hash(q)}`, () =>
+      this.rls.runInTenantContext((m) =>
+        m.createQueryBuilder(Room, 'r')
+          .innerJoin('r.roomType', 'rt')
+          .where('r.building_id = :b AND r.is_publicly_listed', { b: building.id })
+          .select([
+            'r.room_number AS "roomNumber"', 'r.floor AS "floor"', 'rt.code AS "roomTypeCode"', 'rt.name AS "roomTypeName"',
+            'r.area_sqm AS "areaSqm"', 'r.max_occupants AS "maxOccupants"',
+            'COALESCE(r.price_override, rt.base_monthly_rent) AS "monthlyRent"',
+            `CASE WHEN r.status = 'AVAILABLE' THEN 'AVAILABLE' ELSE 'UNAVAILABLE' END AS "availability"`,
+          ])
+          /* filters, sort, paging */ .getRawMany()),
+      { ttlSeconds: 300, tags: ['public', 'rooms', 'catalogs', 'assets'] }),
+  );
+}
+```
 
 ### 3.2 High-Performance TypeORM Implementation (`PropertiesService`)
 

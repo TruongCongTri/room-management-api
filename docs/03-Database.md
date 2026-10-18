@@ -283,6 +283,11 @@ export class AuthSession {
 
 ### 3.1 Bounded Context 1: Property & Asset Topology
 
+* `buildings` is global (no RLS): access goes through `user_building_access`. `room_types`, `rooms`, `assets` and `room_assets` are building-scoped (RLS).
+* **Same-building guarantee in the kernel:** every child row references its parent together with `building_id` (composite foreign keys onto `UNIQUE (building_id, id)`), so a room can never use another building's room type and an appliance unit can never sit in another building's room — even with raw SQL that bypasses the application.
+* `rooms.current_contract_id` is created here; its foreign key to `contracts` is added by the Contracts migration (module 3).
+* Rooms, room types, buildings and catalogue items are never deleted (financial and residence history); a room is taken out of service with status `MAINTENANCE`. Installed appliance units are soft-deleted when disposed of.
+
 #### 1\. `Building` (`buildings`)
 
 Stores the physical building profile, landlord tax registration code, and statutory fire safety metadata.
@@ -370,6 +375,22 @@ export class Building extends EnterpriseBaseEntity {
   @Column({ type: 'numeric', precision: 10, scale: 2, default: 25000 })
 
   defaultWaterRatePerM3: string;
+
+  // Portfolio website (module 1b): shown on /public/* only when listed AND a slug is set
+
+  @Column({ type: 'boolean', default: false })
+
+  isPubliclyListed: boolean;
+
+  @Index('idx_buildings_public_slug_unique', { unique: true, where: '"public_slug" IS NOT NULL' })
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+
+  publicSlug?: string | null; // e.g. "sunrise-quan-7"
+
+  @Column({ type: 'text', nullable: true })
+
+  publicDescription?: string | null;
 
   @OneToMany(() \=\> Room, (room) \=\> room.building)
 
@@ -509,6 +530,12 @@ export class Room extends BuildingScopedEntity {
 
   currentContractId?: string | null;
 
+  // Portfolio website (module 1b): false hides this room from /public/* (default: shown)
+
+  @Column({ type: 'boolean', default: true })
+
+  isPubliclyListed: boolean;
+
   @OneToOne(() \=\> Contract, { nullable: true, onDelete: 'SET NULL' })
 
   @JoinColumn({ name: 'current\_contract\_id' })
@@ -607,7 +634,9 @@ export enum AssetConditionGrade {
 
 @Index('idx\_room\_assets\_room\_id', \['roomId'\])
 
-@Index('idx\_room\_assets\_bld\_serial\_unique', \['buildingId', 'serialNumber'\], { unique: true })
+// Unique among INSTALLED units only (partial: deleted_at IS NULL) so a disposed unit's serial can be installed again
+
+@Index('idx\_room\_assets\_bld\_serial\_unique', \['buildingId', 'serialNumber'\], { unique: true, where: '"deleted_at" IS NULL' })
 
 export class RoomAsset extends BuildingScopedEntity {
 
@@ -668,6 +697,8 @@ Every person living in a room has a profile, **including roommates and children*
 * **ID document is mandatory for everyone:** CCCD (*Thẻ căn cước*) for adults; for children without a card, the 12-digit **personal identification number** (*số định danh cá nhân*, same format as the CCCD number); passport for foreigners (`id_document_type = PASSPORT`, declared through the foreigner temporary-residence channel instead of CT01).
 * **Consent:** every person's data needs verifiable consent; for a child it is recorded through a parent / guardian (`consent_guardian_tenant_id`, Decree 13/2023/NĐ-CP, Art. 20).
 * A person is unique per building by `(building_id, id_card_hash)`; moving between rooms reuses the same profile.
+* **Never decrypted in normal use:** the encrypted columns are `select: false`; lists, lookups and detail screens show `id_card_last4` / `refund_bank_account_last4` only. A profile correction (`PATCH /tenants/{id}`) loads them in memory to re-validate the merged profile against the stored number and never returns them; otherwise only the CT01 builder (module 6) decrypts.
+* **Guardian:** a child's `consent_guardian_tenant_id` must point to an adult profile of the **same building** (composite FK) with its own consent; adults have no guardian.
 * **Login link (`user_id`):** when an **adult occupant with a phone number** moves in, `TenantAccountProvisioningService` finds the account with the same normalised phone number or creates one (`PENDING_ACTIVATION`, role `TENANT`, access to this building) and stores its id here. Children and people without a phone have no login. One account per profile per building (`idx_tenants_bld_user_unique`).
 
 ```ts
@@ -675,20 +706,32 @@ Every person living in a room has a profile, **including roommates and children*
 @Entity('tenants')
 @Index('idx_tenants_bld_id_hash_unique', ['buildingId', 'idCardHash'], { unique: true })
 @Index('idx_tenants_bld_phone', ['buildingId', 'phone'])
+@Index('idx_tenants_bld_name_search', ['buildingId', 'fullNameSearch'])
+@Index('idx_tenants_bld_user_unique', ['buildingId', 'userId'], { unique: true, where: '"user_id" IS NOT NULL AND "deleted_at" IS NULL' })
+@Unique('uq_tenants_bld_id', ['buildingId', 'id']) // target of the same-building guardian FK
 export class Tenant extends BuildingScopedEntity {
   @Column({ type: 'varchar', length: 150 })
   fullName: string;
 
+  // Lower-case, without Vietnamese diacritics ("nguyen van an" for "Nguyễn Văn An") - search without unaccent()
+  @Column({ type: 'varchar', length: 150 })
+  fullNameSearch: string;
+
   @Column({ type: 'enum', enum: IdDocumentType, default: IdDocumentType.CCCD })
   idDocumentType: IdDocumentType;
 
-  // enc:v1:<iv>:<tag>:<cipher> — CCCD / personal ID number (12 digits) or passport number
-  @Column({ type: 'text', transformer: new FieldEncryptionTransformer() })
+  // enc:v1:<iv>:<tag>:<cipher> — CCCD / personal ID number (12 digits) or passport number.
+  // select: false - never loaded (and therefore never decrypted) unless a query asks for it explicitly
+  @Column({ type: 'text', select: false, transformer: new FieldEncryptionTransformer() })
   idCardEncrypted: string;
 
   // HMAC-SHA256(normalized number, BLIND_INDEX_PEPPER), 64 hex chars
-  @Column({ type: 'varchar', length: 64 })
+  @Column({ type: 'char', length: 64 })
   idCardHash: string;
+
+  // Last 4 characters, for masked display ("********1234") without decrypting
+  @Column({ type: 'varchar', length: 4 })
+  idCardLast4: string;
 
   // Nullable: children identified only by a personal ID number have no card
   @Column({ type: 'date', nullable: true })
@@ -697,7 +740,7 @@ export class Tenant extends BuildingScopedEntity {
   @Column({ type: 'varchar', length: 150, nullable: true })
   idCardIssuePlace?: string | null; // e.g. "Bộ Công an"
 
-  // Private scans (identity-documents category), uploaded through presigned PUT
+  // Private scans (identity-documents category) - columns ready, upload endpoints not in scope yet
   @Column({ type: 'varchar', length: 255, nullable: true })
   idDocumentFrontKey?: string | null;
 
@@ -713,8 +756,9 @@ export class Tenant extends BuildingScopedEntity {
   @Column({ type: 'date' })
   dateOfBirth: string; // decides whether the person can become contract holder (18+)
 
-  @Column({ type: 'varchar', length: 20, nullable: true })
-  phone?: string | null; // optional for children
+  // E.164 (+84901234567), same normalisation as the login phone: matches users.phone_e164 at move-in
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  phone?: string | null; // required for adults, optional for children
 
   @Column({ type: 'varchar', length: 150, nullable: true })
   email?: string | null;
@@ -725,9 +769,12 @@ export class Tenant extends BuildingScopedEntity {
   @Column({ type: 'varchar', length: 255 })
   permanentAddress: string; // Nơi thường trú (CT01)
 
-  // Only meaningful for the person who may receive a deposit refund
-  @Column({ type: 'text', nullable: true, transformer: new FieldEncryptionTransformer() })
+  // Only meaningful for the person who may receive a deposit refund; select: false like the ID number
+  @Column({ type: 'text', nullable: true, select: false, transformer: new FieldEncryptionTransformer() })
   refundBankAccountEncrypted?: string | null;
+
+  @Column({ type: 'varchar', length: 4, nullable: true })
+  refundBankAccountLast4?: string | null;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   refundBankName?: string | null;
@@ -739,6 +786,7 @@ export class Tenant extends BuildingScopedEntity {
   @Column({ type: 'varchar', length: 30, default: 'v2026.1' })
   pdplConsentVersion: string;
 
+  // Same-building composite FK (building_id, consent_guardian_tenant_id) → tenants (building_id, id)
   @Column({ type: 'uuid', nullable: true })
   consentGuardianTenantId?: string | null;
 
@@ -747,7 +795,7 @@ export class Tenant extends BuildingScopedEntity {
   userId?: string | null;
 
   @OneToMany(() => ContractOccupant, (co) => co.tenant)
-  occupancies: ContractOccupant[];
+  occupancies: ContractOccupant[]; // module 3
 }
 ```
 
@@ -1717,10 +1765,54 @@ SELECT setup_building_rls(t) FROM unnest(ARRAY[
 ]) AS t;
 
 -- ============================================================================
+-- 6a. PROPERTY & ASSET TOPOLOGY (module 1)
+-- ============================================================================
+ALTER TABLE room_types ADD CONSTRAINT uq_room_types_bld_id UNIQUE (building_id, id);
+ALTER TABLE rooms      ADD CONSTRAINT uq_rooms_bld_id UNIQUE (building_id, id);
+ALTER TABLE assets     ADD CONSTRAINT uq_assets_bld_id UNIQUE (building_id, id);
+ALTER TABLE rooms
+  ADD CONSTRAINT fk_rooms_room_type_same_building FOREIGN KEY (building_id, room_type_id) REFERENCES room_types (building_id, id),
+  ADD CONSTRAINT chk_rooms_floor CHECK (floor BETWEEN 1 AND 30),
+  ADD CONSTRAINT chk_rooms_area CHECK (area_sqm > 0),
+  ADD CONSTRAINT chk_rooms_max_occupants CHECK (max_occupants BETWEEN 1 AND 20),
+  ADD CONSTRAINT chk_rooms_price_override CHECK (price_override IS NULL OR price_override > 0);
+ALTER TABLE room_assets
+  ADD CONSTRAINT fk_room_assets_room_same_building FOREIGN KEY (building_id, room_id) REFERENCES rooms (building_id, id),
+  ADD CONSTRAINT fk_room_assets_asset_same_building FOREIGN KEY (building_id, asset_id) REFERENCES assets (building_id, id),
+  ADD CONSTRAINT chk_room_assets_fee CHECK (custom_monthly_fee >= 0);
+ALTER TABLE room_types ADD CONSTRAINT chk_room_types_values
+  CHECK (base_monthly_rent > 0 AND standard_area_sqm > 0 AND default_max_occupants BETWEEN 1 AND 20);
+ALTER TABLE assets ADD CONSTRAINT chk_assets_values CHECK (standard_monthly_rental_fee >= 0 AND replacement_value >= 0);
+ALTER TABLE buildings ADD CONSTRAINT chk_buildings_values
+  CHECK (total_rooms_capacity BETWEEN 1 AND 500 AND default_water_rate_per_m3 >= 0);
+
+-- 6b. PUBLIC LISTING (module 1b): a building can only be listed with a well-formed, unique slug
+ALTER TABLE buildings
+  ADD COLUMN is_publicly_listed boolean NOT NULL DEFAULT false,
+  ADD COLUMN public_slug varchar(80),
+  ADD COLUMN public_description text,
+  ADD CONSTRAINT chk_buildings_public_slug CHECK (public_slug IS NULL OR public_slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+  ADD CONSTRAINT chk_buildings_listed_has_slug CHECK (NOT is_publicly_listed OR public_slug IS NOT NULL);
+CREATE UNIQUE INDEX idx_buildings_public_slug_unique ON buildings (public_slug) WHERE public_slug IS NOT NULL;
+ALTER TABLE rooms ADD COLUMN is_publicly_listed boolean NOT NULL DEFAULT true;
+
+-- ============================================================================
 -- 6. IDENTITY (global tables — no RLS, see 3.0)
 -- ============================================================================
 -- One live account per phone number; a soft-deleted account frees the number
 CREATE UNIQUE INDEX idx_users_phone_unique ON users (phone_e164) WHERE deleted_at IS NULL;
+
+-- 6c. TENANTS (module 2)
+ALTER TABLE tenants
+  ADD CONSTRAINT uq_tenants_bld_id UNIQUE (building_id, id),
+  ADD CONSTRAINT fk_tenants_guardian_same_building FOREIGN KEY (building_id, consent_guardian_tenant_id) REFERENCES tenants (building_id, id),
+  ADD CONSTRAINT chk_tenants_guardian_not_self CHECK (consent_guardian_tenant_id IS NULL OR consent_guardian_tenant_id <> id),
+  ADD CONSTRAINT chk_tenants_gender CHECK (gender IN ('MALE', 'FEMALE')),
+  ADD CONSTRAINT chk_tenants_nationality CHECK (nationality ~ '^[A-Z]{2}$'),
+  ADD CONSTRAINT chk_tenants_id_hash CHECK (id_card_hash ~ '^[0-9a-f]{64}$'),
+  ADD CONSTRAINT chk_tenants_cccd_vietnamese CHECK (id_document_type <> 'CCCD' OR nationality = 'VN'),
+  ADD CONSTRAINT chk_tenants_phone_e164 CHECK (phone IS NULL OR phone ~ '^\+[1-9][0-9]{7,14}$');
+CREATE INDEX idx_tenants_bld_name_search ON tenants (building_id, full_name_search);
 
 -- A person profile links to at most one login, and a login to at most one profile per building
 CREATE UNIQUE INDEX idx_tenants_bld_user_unique

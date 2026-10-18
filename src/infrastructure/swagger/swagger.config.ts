@@ -18,6 +18,7 @@ const PORTAL_TITLES: Record<(typeof PUBLISHED_API_AUDIENCES)[number], string> = 
   admin: 'Admin & Accounting Portal',
   guard: 'Guard Metering Mobile App',
   external: 'Tenant Self-Service & Webhooks',
+  public: 'Public Listing (portfolio website)',
 };
 
 /** Lọc tài liệu chỉ giữ operation dành cho audience (operation không gắn audience = internal) */

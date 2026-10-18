@@ -12,6 +12,7 @@ import { RequestContextService } from '../context/request-context.service';
 import { AppConfigService } from '../config/app-config.service';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import type { FeatureFlagRule } from '../config/schemas/app.schema';
+import { FEATURE_FLAG_CODE_DEFAULTS } from './feature-flags.constant';
 
 export type { FeatureFlagRule } from '../config/schemas/app.schema';
 
@@ -30,7 +31,11 @@ export class FeatureFlagService implements OnModuleInit, OnModuleDestroy {
     @Optional() config?: AppConfigService,
     @Optional() @Inject(REDIS_CLIENT) private readonly redis: Redis | null = null,
   ) {
-    this.defaults = new Map(Object.entries(config?.featureFlags.defaults ?? {}));
+    // Mặc định trong mã (công tắc ngắt) < FEATURE_FLAGS của env < override Redis
+    this.defaults = new Map<string, FeatureFlagRule>([
+      ...Object.entries(FEATURE_FLAG_CODE_DEFAULTS),
+      ...Object.entries(config?.featureFlags.defaults ?? {}),
+    ] as Array<[string, FeatureFlagRule]>);
     this.cacheTtlMs = config?.featureFlags.cacheTtlMs ?? 10_000;
   }
 

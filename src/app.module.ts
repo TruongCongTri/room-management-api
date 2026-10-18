@@ -4,6 +4,9 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { CoreModule } from './core/core.module';
 import { InfrastructureModule } from './infrastructure/infrastructure.module';
 import { IdentityModule } from './modules/identity/identity.module';
+import { PropertiesModule } from './modules/properties/properties.module';
+import { AssetsModule } from './modules/assets/assets.module';
+import { TenantsModule } from './modules/tenants/tenants.module';
 
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -40,6 +43,9 @@ import { CustomValidationPipe } from './common/pipes/validation.pipe';
     InfrastructureModule,
     // Domain Business Modules (tài liệu 02, thứ tự build: tài liệu 06)
     IdentityModule,
+    PropertiesModule,
+    AssetsModule,
+    TenantsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

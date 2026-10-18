@@ -16,7 +16,9 @@ To prevent exposing internal management endpoints to mobile clients, `SwaggerMod
      
 3. **Tenant Self-Service & Webhook Portal (`/api/docs/external`):** For `TENANT` role (sign-in, own room, own invoices) and external VietQR banking webhooks.
 
-The `Identity & Authentication` endpoints (`/auth/*`) appear in all three portals; `/users` only in the admin portal.
+4. **Public Listing Portal (`/api/docs/public`):** For the public portfolio website — prospective tenants and students browsing buildings, room types, rooms by number and floor, vacancies and the equipment offered. No sign-in.
+
+The `Identity & Authentication` endpoints (`/auth/*`) appear in the admin, guard and external portals; `/users` only in the admin portal. The portfolio site uses the public portal for browsing and the normal `/auth/*` + admin endpoints for its management area (sign-in required).
 
 ### 1.2 Mandatory Enterprise Headers & Security Matrix
 
@@ -61,6 +63,24 @@ Sign-in uses the **phone number**, not email. The rules below apply to every rol
 | Staff accounts | Created by the landlord (`POST /users`) with roles and building access. Role or building changes evict `permissions:user:{id}`; reducing access or disabling the account also revokes the user's sessions. |
 | Tenant room access | A `TENANT` can open **only the room they currently live in**: `GET /properties/rooms/mine`, or `GET /properties/rooms/{id}` for that same room. Any other room → `403 AUTH_FORBIDDEN_RESOURCE`; the same room after moving out → `403`. Tenants have no access to the room list or vacancy summary. |
 
+
+### 1.5 Public Listing (`/public/*`, portfolio website)
+
+The portfolio website shows prospective tenants and students what is on offer **without signing in**; its management area uses the authenticated endpoints. Public endpoints are read-only and follow these rules:
+
+| Topic | Rule |
+| :-- | :-- |
+| Access | `@Public()` — no token, no `X-Building-ID`. A building is addressed by its **public slug** (`/public/buildings/sunrise-quan-7`), rooms by their **room number** (`/rooms/P.302`), room types by **code**. Internal UUIDs are never returned. |
+| What is published | Only buildings with `isPubliclyListed = true` and a `publicSlug`, and only their rooms with `isPubliclyListed = true` (default). Anything else answers the same `404 RES_NOT_FOUND` as an unknown slug — unpublished buildings cannot be discovered. |
+| What is shown | Building name, address, description, floors; room number, floor, room type, area, capacity, monthly rent (price override or base rent), **availability** (`AVAILABLE` / `UNAVAILABLE`); room types with base rent and counts; vacancy counts per room type and per floor; equipment of a room (name, category, condition grade, monthly fee); the equipment catalogue with standard fees; utility terms (electricity billing mode, water rate per m³) and the 1-month deposit rule. |
+| Never shown | Occupants, tenants, contracts, why a room is unavailable (`RESERVED` / `OCCUPIED` / `MAINTENANCE` all become `UNAVAILABLE`), serial numbers, replacement values, landlord name, tax code, bank account, internal ids, audit data. |
+| Isolation | The slug is resolved on the global `buildings` table; every room / asset query then runs in **that building's** RLS transaction and filters `building_id` explicitly, exactly like the authenticated endpoints. |
+| Caching | Server: `cache:{buildingId}:public:*` (XFetch + single-flight, 300 s), tagged `public` / `rooms` / `catalogs` / `assets`: building settings evict `public`, rooms `rooms`, room types `catalogs`, catalogue items and installed units `assets` — every staff change refreshes the public site at once. Client / CDN: `Cache-Control: public, max-age=60, stale-while-revalidate=300` with a weak `ETag`; `If-None-Match` → `304`. |
+| Abuse protection | Per-IP throttling: `@ThrottlePublic()` (`THROTTLE_LIMIT`, 60 / min) on detail endpoints, `@ThrottleSearch()` (100 / min) on the room search. `limit` ≤ 50. |
+| Kill switch | Feature flag `public_listing` (`@RequireFeature`), **on by default** (code default, overridable by `FEATURE_FLAGS` or Redis) → `404 RES_FEATURE_DISABLED` for every `/public/*` route when switched off; the management API is unaffected. |
+| CORS | The portfolio origin must be in `ALLOWED_ORIGINS`. |
+| Publishing | Landlord: `PATCH /properties/buildings/{id}` with `isPubliclyListed`, `publicSlug`, `publicDescription`. Manager: `PATCH /properties/rooms/{id}` with `isPubliclyListed` to hide one room. |
+
 ---
 
 ## 2\. Complete OpenAPI 3.0.3 Specification (`openapi.yaml`)
@@ -96,6 +116,10 @@ tags:
   \- name: Observability & Health
 
     description: Kubernetes Liveness/Readiness probes and OpenTelemetry Prometheus metrics (@Public)\[cite: 2, 4\]
+
+  \- name: Public Listing
+
+    description: Read-only portfolio website endpoints (no sign-in) - published buildings, room types, rooms by number and floor, vacancies, equipment
 
   \- name: Identity & Authentication
 
@@ -502,6 +526,366 @@ paths:
 
   \# \===========================================================================
 
+```yaml
+  # ===========================================================================
+  # 1c. PUBLIC LISTING (portfolio website, no sign-in) - document 04, section 1.5
+  # ===========================================================================
+  /public/buildings:
+    get:
+      tags: [Public Listing]
+      summary: Published buildings with their price range and free rooms
+      security: []
+      responses:
+        '200':
+          description: Published buildings ordered by name
+          headers: { Cache-Control: { $ref: '#/components/headers/PublicCacheControl' } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PublicBuildingSummaryDto' } }
+        '304': { description: Not modified (If-None-Match matched the ETag) }
+        '404': { $ref: '#/components/responses/NotFoundError' }          # unknown or unpublished building / room; RES_FEATURE_DISABLED when public_listing is off
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }
+
+  /public/buildings/{slug}:
+    get:
+      tags: [Public Listing]
+      summary: One published building - address, description, floors, room types, utility terms
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }, example: sunrise-quan-7 }
+      responses:
+        '200':
+          description: Building profile
+          headers: { Cache-Control: { $ref: '#/components/headers/PublicCacheControl' } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PublicBuildingDto' }
+        '304': { description: Not modified (If-None-Match matched the ETag) }
+        '404': { $ref: '#/components/responses/NotFoundError' }          # unknown or unpublished building / room; RES_FEATURE_DISABLED when public_listing is off
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }
+
+  /public/buildings/{slug}/room-types:
+    get:
+      tags: [Public Listing]
+      summary: Room types with base rent, area, capacity and how many are free
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }, example: sunrise-quan-7 }
+      responses:
+        '200':
+          description: Room types ordered by base rent
+          headers: { Cache-Control: { $ref: '#/components/headers/PublicCacheControl' } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PublicRoomTypeDto' } }
+        '304': { description: Not modified (If-None-Match matched the ETag) }
+        '404': { $ref: '#/components/responses/NotFoundError' }          # unknown or unpublished building / room; RES_FEATURE_DISABLED when public_listing is off
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }
+
+  /public/buildings/{slug}/floors:
+    get:
+      tags: [Public Listing]
+      summary: Floors (levels) with their room numbers and free-room counts
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }, example: sunrise-quan-7 }
+      responses:
+        '200':
+          description: Floors in ascending order
+          headers: { Cache-Control: { $ref: '#/components/headers/PublicCacheControl' } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PublicFloorDto' } }
+        '304': { description: Not modified (If-None-Match matched the ETag) }
+        '404': { $ref: '#/components/responses/NotFoundError' }          # unknown or unpublished building / room; RES_FEATURE_DISABLED when public_listing is off
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }
+
+  /public/buildings/{slug}/rooms:
+    get:
+      tags: [Public Listing]
+      summary: Search published rooms (room number, floor, type, price, area, capacity, availability)
+      description: |
+        - `@ThrottleSearch()`. Same indexes as the staff directory (`idx_rooms_bld_status_type`, `idx_rooms_bld_floor_status`,
+          `idx_rooms_available_covering` for `availability=AVAILABLE`).
+        - `availability` is `AVAILABLE` or `UNAVAILABLE`; the reason a room is unavailable is never disclosed.
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }, example: sunrise-quan-7 }
+        - { name: roomType, in: query, required: false, schema: { type: string, example: STUDIO }, description: Room type code }
+        - { name: floor, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 30 } }
+        - { name: availability, in: query, required: false, schema: { type: string, enum: [AVAILABLE, UNAVAILABLE] } }
+        - { name: minPrice, in: query, required: false, schema: { type: integer, minimum: 0 }, description: VND per month }
+        - { name: maxPrice, in: query, required: false, schema: { type: integer, minimum: 0 } }
+        - { name: minAreaSqm, in: query, required: false, schema: { type: number, minimum: 0 } }
+        - { name: occupants, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 20 }, description: Rooms that fit at least this many people }
+        - { name: sortBy, in: query, required: false, schema: { type: string, enum: [monthlyRent, floor, roomNumber, areaSqm], default: roomNumber } }
+        - { name: sortOrder, in: query, required: false, schema: { type: string, enum: [ASC, DESC], default: ASC } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: Paginated rooms (meta.pagination)
+          headers: { Cache-Control: { $ref: '#/components/headers/PublicCacheControl' } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PublicRoomListItemDto' } }
+        '400': { $ref: '#/components/responses/BadRequestError' }        # e.g. minPrice > maxPrice
+        '304': { description: Not modified (If-None-Match matched the ETag) }
+        '404': { $ref: '#/components/responses/NotFoundError' }          # unknown or unpublished building / room; RES_FEATURE_DISABLED when public_listing is off
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }
+
+  /public/buildings/{slug}/rooms/{roomNumber}:
+    get:
+      tags: [Public Listing]
+      summary: One room by its number - type, floor, area, capacity, rent, availability and equipment
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }, example: sunrise-quan-7 }
+        - { name: roomNumber, in: path, required: true, schema: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9.-]{0,19}$' }, example: P.302, description: Case-insensitive }
+      responses:
+        '200':
+          description: Room profile
+          headers: { Cache-Control: { $ref: '#/components/headers/PublicCacheControl' } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PublicRoomDetailDto' }
+        '304': { description: Not modified (If-None-Match matched the ETag) }
+        '404': { $ref: '#/components/responses/NotFoundError' }          # unknown or unpublished building / room; RES_FEATURE_DISABLED when public_listing is off
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }
+
+  /public/buildings/{slug}/vacancies:
+    get:
+      tags: [Public Listing]
+      summary: Free rooms per room type
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }, example: sunrise-quan-7 }
+      responses:
+        '200':
+          description: Vacancy counts (published rooms only, no occupancy percentage)
+          headers: { Cache-Control: { $ref: '#/components/headers/PublicCacheControl' } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PublicVacancyDto' } }
+        '304': { description: Not modified (If-None-Match matched the ETag) }
+        '404': { $ref: '#/components/responses/NotFoundError' }          # unknown or unpublished building / room; RES_FEATURE_DISABLED when public_listing is off
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }
+
+  /public/buildings/{slug}/assets:
+    get:
+      tags: [Public Listing]
+      summary: Equipment & furniture offered for rent, with standard monthly fees
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }, example: sunrise-quan-7 }
+        - { name: category, in: query, required: false, schema: { type: string, enum: [APPLIANCE, FURNITURE] } }
+      responses:
+        '200':
+          description: Catalogue items with the number of published rooms equipped
+          headers: { Cache-Control: { $ref: '#/components/headers/PublicCacheControl' } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PublicAssetDto' } }
+        '304': { description: Not modified (If-None-Match matched the ETag) }
+        '404': { $ref: '#/components/responses/NotFoundError' }          # unknown or unpublished building / room; RES_FEATURE_DISABLED when public_listing is off
+        '429': { $ref: '#/components/responses/TooManyRequestsError' }
+```
+
+```yaml
+  /properties/buildings:
+    get:
+      tags: [Properties & Room Directory]
+      summary: Buildings the landlord manages (with tax and bank settings)
+      description: |
+        - `buildings:read:global` (LANDLORD). Only buildings in the caller's `user_building_access`; no `X-Building-ID` needed.
+        - Staff see the names of their buildings in `GET /auth/me`.
+      responses:
+        '200':
+          description: The caller's buildings, by code
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/BuildingDto' } }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+    post:
+      tags: [Properties & Room Directory]
+      summary: Register a building (landlord)
+      description: |
+        - `buildings:create:global`. The creator is granted access to the new building in the same transaction.
+        - Access tokens list buildings at sign-in: call `POST /auth/refresh` to use the new building in `X-Building-ID`.
+        - `code` is unique across the platform → `409 RES_ALREADY_EXISTS`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateBuildingDto' }
+      responses:
+        '201':
+          description: Building registered
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/BuildingDto' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '409': { $ref: '#/components/responses/ConflictError' }          # RES_ALREADY_EXISTS (code)
+
+  /properties/buildings/{id}:
+    patch:
+      tags: [Properties & Room Directory]
+      summary: Update a building's address, tax, bank and billing settings (landlord)
+      description: |
+        - `buildings:update:global`, only for a building the caller can access (else `404`). `code` cannot change.
+        - `totalRoomsCapacity` cannot go below the number of rooms already created → `409 BIZ_BUILDING_CAPACITY_EXCEEDED`.
+        - Publishing on the portfolio site: `isPubliclyListed: true` requires a `publicSlug` (sent now or already set) → `400`;
+          `publicSlug` is unique → `409 RES_ALREADY_EXISTS`. Evicts the building's public cache.
+        - Optimistic lock with `version`.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateBuildingDto' }
+      responses:
+        '200':
+          description: Building updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/BuildingDto' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }          # BIZ_BUILDING_CAPACITY_EXCEEDED, RES_CONCURRENCY_CONFLICT
+
+  /properties/room-types:
+    get:
+      tags: [Properties & Room Directory]
+      summary: Room types of the active building with their base rent
+      description: |
+        - `rooms:read:department`. Cached as `cache:{buildingId}:catalogs:pricing` (24 h), evicted through
+          `tag:{buildingId}:catalogs` when a room type is created or changed.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+      responses:
+        '200':
+          description: Room types ordered by base rent
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/RoomTypeDto' } }
+    post:
+      tags: [Properties & Room Directory]
+      summary: Create a room type
+      description: |
+        - `rooms:create:department`. `code` unique per building → `409 RES_ALREADY_EXISTS`.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRoomTypeDto' }
+      responses:
+        '201':
+          description: Room type created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RoomTypeDto' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+
+  /properties/room-types/{id}:
+    patch:
+      tags: [Properties & Room Directory]
+      summary: Change a room type (base rent, area, default capacity)
+      description: |
+        - `rooms:update:department`. A new base rent applies to new contracts and to rooms without `priceOverride`;
+          active contracts keep their agreed rent. Evicts `tag:{buildingId}:catalogs` and `tag:{buildingId}:rooms`.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateRoomTypeDto' }
+      responses:
+        '200':
+          description: Room type updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RoomTypeDto' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }          # RES_CONCURRENCY_CONFLICT
+```
+
   /properties/rooms:
 
     get:
@@ -619,6 +1003,39 @@ paths:
         '401':
 
           \$ref: '\#/components/responses/UnauthorizedError'
+
+```yaml
+    post:
+      tags: [Properties & Room Directory]
+      summary: Create a room in the active building
+      description: |
+        - `rooms:create:department`. `roomNumber` unique per building → `409 RES_ALREADY_EXISTS`.
+        - Never more rooms than `buildings.totalRoomsCapacity` (default 80) → `409 BIZ_BUILDING_CAPACITY_EXCEEDED`;
+          the building row is locked while counting, so two simultaneous creations cannot both take the last slot.
+        - The room type must belong to the same building (composite FK) → `404` otherwise.
+        - `maxOccupants` defaults to the room type's `defaultMaxOccupants`; new rooms start `AVAILABLE`.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRoomDto' }
+      responses:
+        '201':
+          description: Room created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RoomDetailDto' }
+        '404': { $ref: '#/components/responses/NotFoundError' }          # room type not in this building
+        '409': { $ref: '#/components/responses/ConflictError' }          # RES_ALREADY_EXISTS, BIZ_BUILDING_CAPACITY_EXCEEDED
+```
 
   /properties/rooms/vacancies/summary:
 
@@ -763,47 +1180,196 @@ paths:
 
           \$ref: '\#/components/responses/NotFoundError'
 
+```yaml
+    patch:
+      tags: [Properties & Room Directory]
+      summary: Change a room's price, status, type or physical data
+      description: |
+        - `rooms:update:department`. Under the lock `lock:{buildingId}:room:contract:{id}` (shared with contract
+          activation) plus optimistic `version`.
+        - Manual statuses: `AVAILABLE`, `RESERVED`, `MAINTENANCE`. `OCCUPIED` is set only by contracts; an `OCCUPIED`
+          room's status cannot be changed by hand → `409 BIZ_ROOM_STATUS_TRANSITION_INVALID`.
+        - `priceOverride: null` returns the room to its room type's base rent. Active contracts keep their agreed rent.
+        - `isPubliclyListed: false` hides the room from the portfolio site (default `true`).
+        - Status changes publish `room.status_changed` (outbox → realtime `room.status_changed` to the building's dashboards);
+          any change evicts `tag:{buildingId}:rooms`.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateRoomDto' }
+      responses:
+        '200':
+          description: Room updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RoomDetailDto' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }          # BIZ_ROOM_STATUS_TRANSITION_INVALID, RES_LOCKED, RES_CONCURRENCY_CONFLICT
+```
+
   \# \===========================================================================
 
   \# 3\. ASSETS & APPLIANCE RENTAL CATALOG
 
   \# \===========================================================================
 
-  /assets/room-assignments:
-
-    post:
-
-      tags: \[Assets & Furniture Catalog\]
-
-      summary: Assign a serial-numbered appliance or furniture item to a room\[cite: 3, 5, 6\]
-
+```yaml
+  /assets:
+    get:
+      tags: [Assets & Furniture Catalog]
+      summary: Appliance & furniture catalogue of the active building
+      description: |
+        - `assets:read:department`. Each item with the number of units installed in rooms.
       parameters:
-
-        \- \$ref: '\#/components/parameters/BuildingIdHeader'
-
-        \- \$ref: '\#/components/parameters/IdempotencyKeyHeader'
-
-      requestBody:
-
-        required: true
-
-        content:
-
-          application/json:
-
-            schema:
-
-              \$ref: '\#/components/schemas/AssignRoomAssetDto'
-
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: category, in: query, required: false, schema: { type: string, enum: [APPLIANCE, FURNITURE] } }
       responses:
-
+        '200':
+          description: Catalogue ordered by category and name
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/AssetDto' } }
+    post:
+      tags: [Assets & Furniture Catalog]
+      summary: Add a catalogue item
+      description: |
+        - `assets:create:department`. `code` unique per building → `409 RES_ALREADY_EXISTS`.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAssetDto' }
+      responses:
         '201':
+          description: Item added
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AssetDto' }
+        '409': { $ref: '#/components/responses/ConflictError' }
 
-          description: Appliance assigned to room inventory\[cite: 5, 6\]
+  /assets/{id}:
+    patch:
+      tags: [Assets & Furniture Catalog]
+      summary: Change a catalogue item (name, standard fee, replacement value)
+      description: |
+        - `assets:update:department`. The standard fee is only the default for new installations; installed units keep
+          their own `customMonthlyFee`.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAssetDto' }
+      responses:
+        '200':
+          description: Item updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AssetDto' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
 
-        '409':
+  /assets/room-assignments:
+    post:
+      tags: [Assets & Furniture Catalog]
+      summary: Install a serial-numbered appliance or furniture item in a room
+      description: |
+        - `assets:create:department`. Room and catalogue item must belong to the active building (composite FKs) → `404`.
+        - `serialNumber` is unique per building among installed units → `409 RES_ALREADY_EXISTS`.
+        - `customMonthlyFee` defaults to the item's `standardMonthlyRentalFee`; `installedDate` to today (Vietnam time).
+        - Room detail is never cached, so the new unit shows up there at once.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignRoomAssetDto' }
+      responses:
+        '201':
+          description: Unit installed in the room
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RoomAssetDto' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
 
-          \$ref: '\#/components/responses/ConflictError'
+  /assets/room-assignments/{id}:
+    patch:
+      tags: [Assets & Furniture Catalog]
+      summary: Re-grade an installed unit, change its fee or move it to another room
+      description: |
+        - `assets:update:department`. Moving keeps the unit's history (same row, new `roomId`).
+        - Units rented under an active contract (`contract_assets`, module 3) cannot be moved → `409`.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateRoomAssetDto' }
+      responses:
+        '200':
+          description: Unit updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RoomAssetDto' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+    delete:
+      tags: [Assets & Furniture Catalog]
+      summary: Remove an installed unit (disposed, sold, returned)
+      description: |
+        - `assets:delete:department`. Soft delete: the unit stays in history and its serial number can be installed again.
+        - Units rented under an active contract (module 3) cannot be removed → `409`.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Unit removed }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+```
 
   \# \===========================================================================
 
@@ -811,101 +1377,164 @@ paths:
 
   \# \===========================================================================
 
+```yaml
   /tenants:
-
     post:
-
-      tags: \[Tenants & PDPL Privacy\]
-
-      summary: Register one person (holder, roommate or child) with AES-256-GCM encryption & HMAC blind indexing\[cite: 2, 3, 4\]
-
+      tags: [Tenants & PDPL Privacy]
+      summary: Register one person (holder, roommate or child) - encrypted ID number + blind index
       description: |
-
-        \- \*\*Every occupant needs a profile\*\* — the contract holder, each roommate and each child (12-digit personal
-          identification number when no CCCD card exists; passport for foreigners). A duplicate ID returns `409
-          BIZ_TENANT_ID_CARD_DUPLICATE` with the existing profile id, which is reused when the person changes rooms.
-
-        Encrypts \`idCardNumber\` (12-digit CCCD/Passport) and \`refundBankAccount\` via \`FieldEncryptionTransformer\`
-
-        (\`AES-256-GCM\` with key version prefix) and computes \`idCardHash\` (\`HMAC-SHA256\`) for O(1) duplicate detection\[cite: 2, 4\].
-
+        - `tenants:create:department`. Every occupant needs a profile: contract holder, each roommate, each child.
+        - ID number normalised (spaces, dots, dashes removed, upper-case). CCCD / child's personal ID: 12 digits whose
+          digit 4 (gender + century) and digits 5-6 (birth year) must match `gender` and `dateOfBirth`; only for
+          nationality `VN`. Passport: 6-12 letters / digits with at least one digit.
+        - Encrypted with AES-256-GCM; `id_card_hash` (HMAC-SHA256) detects duplicates without decrypting →
+          `409 BIZ_TENANT_ID_CARD_DUPLICATE` with the existing profile id (reuse it when the person changes rooms).
+        - Consent is mandatory (`422 BIZ_PDPL_CONSENT_REQUIRED`). A child (under 18 on today's date, Vietnam time) needs
+          `consentGuardianTenantId`: an adult profile of the same building with its own consent
+          (`422 BIZ_TENANT_GUARDIAN_INVALID`). Adults need a phone number and no guardian.
+        - Phone normalised to E.164 like the login phone, so the person's account is found at move-in.
       parameters:
-
-        \- \$ref: '\#/components/parameters/BuildingIdHeader'
-
-        \- \$ref: '\#/components/parameters/IdempotencyKeyHeader'
-
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
-
         required: true
-
         content:
-
           application/json:
-
-            schema:
-
-              \$ref: '\#/components/schemas/CreateTenantDto'
-
+            schema: { $ref: '#/components/schemas/CreateTenantDto' }
       responses:
-
         '201':
-
-          description: Tenant created with masked PII response
-
+          description: Person registered (ID number masked)
           content:
-
             application/json:
-
               schema:
-
                 allOf:
-
-                  \- \$ref: '\#/components/schemas/StandardSuccessEnvelope'
-
-                  \- type: object
-
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
                     properties:
-
-                      data:
-
-                        \$ref: '\#/components/schemas/TenantSafeResponseDto'
-
-        '409':
-
-          \$ref: '\#/components/responses/ConflictError'
+                      data: { $ref: '#/components/schemas/TenantDetailDto' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '409': { $ref: '#/components/responses/ConflictError' }        # BIZ_TENANT_ID_CARD_DUPLICATE
+        '422': { description: 'BIZ_PDPL_CONSENT_REQUIRED, BIZ_TENANT_GUARDIAN_INVALID' }
+    get:
+      tags: [Tenants & PDPL Privacy]
+      summary: Search people of the active building by name or phone
+      description: |
+        - `tenants:read:department`. `q` matches the name without diacritics ("nguyen" finds "Nguyễn") or, if it is a
+          phone number, the exact normalised phone. ID numbers are never searchable here (use `/tenants/lookup`).
+        - Masked IDs only; nothing is decrypted.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: q, in: query, required: false, schema: { type: string, minLength: 2, maxLength: 100 } }
+        - { name: minor, in: query, required: false, schema: { type: boolean }, description: Only children (true) or only adults (false) }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: People ordered by name (meta.pagination)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/TenantSafeResponseDto' } }
 
   /tenants/lookup:
-
     get:
-
-      tags: \[Tenants & PDPL Privacy\]
-
-      summary: Exact-match lookup by Citizen ID (CCCD) using deterministic HMAC blind index
-
+      tags: [Tenants & PDPL Privacy]
+      summary: Exact lookup by CCCD / personal ID / passport through the blind index
+      description: |
+        - `tenants:read:department`, `@ThrottleSearch()`. The number is normalised and HMAC-hashed; no row is decrypted.
+        - Every lookup (found or not) is written to the audit log with the masked number.
       parameters:
-
-        \- \$ref: '\#/components/parameters/BuildingIdHeader'
-
-        \- name: idCardNumber
-
-          in: query
-
-          required: true
-
-          example: "079099001234"
-
-          schema: { type: string }
-
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: idCardNumber, in: query, required: true, example: "079099001234", schema: { type: string, maxLength: 20 } }
       responses:
-
         '200':
+          description: Person found via idx_tenants_bld_id_hash_unique
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TenantSafeResponseDto' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
 
-          description: Tenant profile found via idx\_tenants\_bld\_id\_hash\_unique
+  /tenants/me:
+    get:
+      tags: [Tenants & PDPL Privacy]
+      summary: The signed-in tenant's own profile (tenants:read:own)
+      description: |
+        - The profile linked to the caller's login (`tenants.user_id`) in the active building; `404` when there is none
+          (the link is created at move-in, module 3).
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+      responses:
+        '200':
+          description: Own profile (ID and bank account masked)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TenantDetailDto' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
 
-        '404':
-
-          \$ref: '\#/components/responses/NotFoundError'
+  /tenants/{id}:
+    get:
+      tags: [Tenants & PDPL Privacy]
+      summary: One person's profile (masked)
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TenantDetailDto' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    patch:
+      tags: [Tenants & PDPL Privacy]
+      summary: Correct a person's data (contact, addresses, refund bank, ID document, guardian)
+      description: |
+        - `tenants:update:department`, optimistic `version`. The merged profile is validated with the same rules as
+          creation; a new ID number is re-normalised, re-hashed and checked for duplicates (`409`).
+        - `refundBankAccount: null` removes the refund account. Consent cannot be changed here.
+      parameters:
+        - $ref: '#/components/parameters/BuildingIdHeader'
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateTenantDto' }
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/StandardSuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TenantDetailDto' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': { $ref: '#/components/responses/ConflictError' }        # BIZ_TENANT_ID_CARD_DUPLICATE, RES_CONCURRENCY_CONFLICT
+        '422': { description: BIZ_TENANT_GUARDIAN_INVALID }
+```
 
   \# \===========================================================================
 
@@ -1894,6 +2523,14 @@ components:
 
         roomTypeName: { type: string, example: "Studio Balcony" }
 
+        roomTypeId: { type: string, format: uuid }
+
+        priceOverride: { type: number, nullable: true, description: null = room type base rent }
+
+        version: { type: integer, description: Optimistic lock for PATCH }
+
+        isPubliclyListed: { type: boolean, description: Shown on the portfolio site }
+
         effectiveRent: { type: number, example: 6500000 }
 
         activeContract:
@@ -1944,23 +2581,294 @@ components:
 
               monthlyFee: { type: number, example: 300000 }
 
-    AssignRoomAssetDto:
-
+```yaml
+    PublicBuildingSummaryDto:
       type: object
-
-      required: \[roomId, assetId, serialNumber, customMonthlyFee, conditionGrade\]
-
       properties:
+        slug: { type: string, example: sunrise-quan-7 }
+        name: { type: string, example: "Tòa nhà Sunrise" }
+        district: { type: string, example: "Quận 7" }
+        city: { type: string, example: "Thành phố Hồ Chí Minh" }
+        totalRooms: { type: integer, example: 80 }
+        availableRooms: { type: integer, example: 6 }
+        monthlyRentFrom: { type: number, nullable: true, example: 6500000 }
+        monthlyRentTo: { type: number, nullable: true, example: 12000000 }
 
+    PublicBuildingDto:
+      type: object
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        addressLine: { type: string, example: "12 Nguyễn Thị Thập" }
+        ward: { type: string }
+        district: { type: string }
+        city: { type: string }
+        totalRooms: { type: integer }
+        availableRooms: { type: integer }
+        floors: { type: array, items: { type: integer }, example: [1, 2, 3, 4, 5, 6, 7, 8] }
+        roomTypes: { type: array, items: { $ref: '#/components/schemas/PublicRoomTypeDto' } }
+        utilities:
+          type: object
+          properties:
+            electricityBillingMode: { type: string, enum: [EVN_TIERED_QUOTA, EVN_TIER_3_FLAT], description: EVN residential tiers by registered residents, or flat tier-3 rate }
+            waterRatePerM3: { type: number, example: 25000 }
+        depositMonths: { type: integer, example: 1, description: Security deposit equal to one month of rent }
+
+    PublicRoomTypeDto:
+      type: object
+      properties:
+        code: { type: string, example: STUDIO }
+        name: { type: string, example: Studio }
+        baseMonthlyRent: { type: number, example: 6500000 }
+        standardAreaSqm: { type: number, example: 28.5 }
+        maxOccupants: { type: integer, example: 2 }
+        totalRooms: { type: integer, example: 40 }
+        availableRooms: { type: integer, example: 3 }
+
+    PublicFloorDto:
+      type: object
+      properties:
+        floor: { type: integer, example: 3 }
+        totalRooms: { type: integer, example: 10 }
+        availableRooms: { type: integer, example: 2 }
+        roomNumbers: { type: array, items: { type: string }, example: ["P.301", "P.302"] }
+
+    PublicRoomListItemDto:
+      type: object
+      properties:
+        roomNumber: { type: string, example: "P.302" }
+        floor: { type: integer, example: 3 }
+        roomTypeCode: { type: string, example: STUDIO }
+        roomTypeName: { type: string, example: Studio }
+        areaSqm: { type: number, example: 30 }
+        maxOccupants: { type: integer, example: 2 }
+        monthlyRent: { type: number, example: 6500000 }
+        availability: { type: string, enum: [AVAILABLE, UNAVAILABLE] }
+
+    PublicRoomDetailDto:
+      allOf:
+        - $ref: '#/components/schemas/PublicRoomListItemDto'
+        - type: object
+          properties:
+            buildingSlug: { type: string }
+            equipment:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string, example: "Máy lạnh Daikin Inverter 1.5 HP" }
+                  category: { type: string, enum: [APPLIANCE, FURNITURE] }
+                  conditionGrade: { type: string, enum: [GRADE_A_NEW, GRADE_B_GOOD, GRADE_C_FAIR, BROKEN] }
+                  monthlyFee: { type: number, example: 300000 }
+            depositMonths: { type: integer, example: 1 }
+
+    PublicVacancyDto:
+      type: object
+      properties:
+        roomTypeCode: { type: string }
+        roomTypeName: { type: string }
+        baseMonthlyRent: { type: number }
+        totalRooms: { type: integer }
+        availableRooms: { type: integer }
+
+    PublicAssetDto:
+      type: object
+      properties:
+        name: { type: string }
+        category: { type: string, enum: [APPLIANCE, FURNITURE] }
+        standardMonthlyRentalFee: { type: number }
+        roomsEquipped: { type: integer, description: Published rooms with at least one unit installed }
+
+```
+
+```yaml
+    BuildingDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, example: "BLD-HCM-Q7-01" }
+        name: { type: string, example: "Tòa nhà Sunrise" }
+        addressLine: { type: string, example: "12 Nguyễn Thị Thập" }
+        ward: { type: string, example: "Phường Tân Phú" }
+        district: { type: string, example: "Quận 7" }
+        city: { type: string, example: "Thành phố Hồ Chí Minh" }
+        landlordTaxCode: { type: string, example: "0312345678" }
+        landlordFullName: { type: string, example: "Nguyễn Văn Chủ" }
+        bankAccountNumber: { type: string, nullable: true, example: "0071000123456" }
+        bankBinCode: { type: string, nullable: true, example: "970436" }
+        totalRoomsCapacity: { type: integer, example: 80 }
+        roomCount: { type: integer, example: 80 }
+        isPubliclyListed: { type: boolean, example: true }
+        publicSlug: { type: string, nullable: true, example: sunrise-quan-7 }
+        publicDescription: { type: string, nullable: true }
+        electricityBillingMode: { type: string, enum: [EVN_TIERED_QUOTA, EVN_TIER_3_FLAT] }
+        defaultWaterRatePerM3: { type: number, example: 25000 }
+        version: { type: integer }
+
+    CreateBuildingDto:
+      type: object
+      required: [code, name, addressLine, ward, district, landlordTaxCode, landlordFullName]
+      properties:
+        code: { type: string, pattern: '^[A-Z0-9][A-Z0-9-]{2,29}$', example: "BLD-HCM-Q7-01" }
+        name: { type: string, maxLength: 150 }
+        addressLine: { type: string, maxLength: 255 }
+        ward: { type: string, maxLength: 100 }
+        district: { type: string, maxLength: 100 }
+        city: { type: string, maxLength: 100, default: "Thành phố Hồ Chí Minh" }
+        landlordTaxCode: { type: string, pattern: '^[0-9]{10}(-[0-9]{3})?$' }
+        landlordFullName: { type: string, maxLength: 150 }
+        bankAccountNumber: { type: string, pattern: '^[0-9]{6,19}$' }
+        bankBinCode: { type: string, pattern: '^[0-9]{6}$', description: NAPAS bank BIN for VietQR }
+        totalRoomsCapacity: { type: integer, minimum: 1, maximum: 500, default: 80 }
+        electricityBillingMode: { type: string, enum: [EVN_TIERED_QUOTA, EVN_TIER_3_FLAT], default: EVN_TIERED_QUOTA }
+        defaultWaterRatePerM3: { type: number, minimum: 0, default: 25000 }
+
+    UpdateBuildingDto:
+      type: object
+      minProperties: 1
+      description: Same fields as CreateBuildingDto except code (all optional), plus version
+      properties:
+        name: { type: string, maxLength: 150 }
+        addressLine: { type: string, maxLength: 255 }
+        ward: { type: string, maxLength: 100 }
+        district: { type: string, maxLength: 100 }
+        city: { type: string, maxLength: 100 }
+        landlordTaxCode: { type: string, pattern: '^[0-9]{10}(-[0-9]{3})?$' }
+        landlordFullName: { type: string, maxLength: 150 }
+        bankAccountNumber: { type: string, nullable: true, pattern: '^[0-9]{6,19}$' }
+        bankBinCode: { type: string, nullable: true, pattern: '^[0-9]{6}$' }
+        totalRoomsCapacity: { type: integer, minimum: 1, maximum: 500 }
+        electricityBillingMode: { type: string, enum: [EVN_TIERED_QUOTA, EVN_TIER_3_FLAT] }
+        defaultWaterRatePerM3: { type: number, minimum: 0 }
+        isPubliclyListed: { type: boolean, description: Show the building on the portfolio site (needs publicSlug) }
+        publicSlug: { type: string, nullable: true, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$', minLength: 3, maxLength: 80 }
+        publicDescription: { type: string, nullable: true, maxLength: 2000 }
+        version: { type: integer, minimum: 1 }
+
+    RoomTypeDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, example: "STUDIO_BALCONY" }
+        name: { type: string, example: "Studio Balcony" }
+        baseMonthlyRent: { type: number, example: 6500000 }
+        standardAreaSqm: { type: number, example: 28.5 }
+        defaultMaxOccupants: { type: integer, example: 2 }
+        version: { type: integer }
+
+    CreateRoomTypeDto:
+      type: object
+      required: [code, name, baseMonthlyRent, standardAreaSqm]
+      properties:
+        code: { type: string, pattern: '^[A-Z0-9_]{2,50}$', example: "1BR_DELUXE" }
+        name: { type: string, maxLength: 100 }
+        baseMonthlyRent: { type: number, minimum: 1, maximum: 999999999999, description: VND, whole number }
+        standardAreaSqm: { type: number, exclusiveMinimum: true, minimum: 0, maximum: 9999 }
+        defaultMaxOccupants: { type: integer, minimum: 1, maximum: 20, default: 2 }
+
+    UpdateRoomTypeDto:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, maxLength: 100 }
+        baseMonthlyRent: { type: number, minimum: 1 }
+        standardAreaSqm: { type: number, minimum: 0, exclusiveMinimum: true }
+        defaultMaxOccupants: { type: integer, minimum: 1, maximum: 20 }
+        version: { type: integer, minimum: 1 }
+
+    CreateRoomDto:
+      type: object
+      required: [roomNumber, floor, areaSqm, roomTypeId]
+      properties:
+        roomNumber: { type: string, pattern: '^[A-Z0-9][A-Z0-9.-]{0,19}$', example: "P.302" }
+        floor: { type: integer, minimum: 1, maximum: 30, example: 3 }
+        areaSqm: { type: number, minimum: 0, exclusiveMinimum: true, example: 32.5 }
+        roomTypeId: { type: string, format: uuid }
+        maxOccupants: { type: integer, minimum: 1, maximum: 20, description: Defaults to the room type's defaultMaxOccupants }
+        priceOverride: { type: number, minimum: 1, nullable: true, description: VND; null = room type base rent }
+
+    UpdateRoomDto:
+      type: object
+      minProperties: 1
+      properties:
+        roomNumber: { type: string, pattern: '^[A-Z0-9][A-Z0-9.-]{0,19}$' }
+        floor: { type: integer, minimum: 1, maximum: 30 }
+        areaSqm: { type: number, minimum: 0, exclusiveMinimum: true }
+        roomTypeId: { type: string, format: uuid }
+        maxOccupants: { type: integer, minimum: 1, maximum: 20 }
+        priceOverride: { type: number, minimum: 1, nullable: true }
+        status: { type: string, enum: [AVAILABLE, RESERVED, MAINTENANCE] }
+        isPubliclyListed: { type: boolean, description: false hides the room from the portfolio site }
+        version: { type: integer, minimum: 1 }
+
+    AssetDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, example: "AC_DAIKIN_1_5HP" }
+        name: { type: string, example: "Máy lạnh Daikin Inverter 1.5 HP" }
+        category: { type: string, enum: [APPLIANCE, FURNITURE] }
+        standardMonthlyRentalFee: { type: number, example: 300000 }
+        replacementValue: { type: number, example: 9500000 }
+        installedUnits: { type: integer, example: 42 }
+        version: { type: integer }
+
+    CreateAssetDto:
+      type: object
+      required: [code, name, category, standardMonthlyRentalFee]
+      properties:
+        code: { type: string, pattern: '^[A-Z0-9_]{2,50}$' }
+        name: { type: string, maxLength: 150 }
+        category: { type: string, enum: [APPLIANCE, FURNITURE] }
+        standardMonthlyRentalFee: { type: number, minimum: 0 }
+        replacementValue: { type: number, minimum: 0, default: 0 }
+
+    UpdateAssetDto:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, maxLength: 150 }
+        standardMonthlyRentalFee: { type: number, minimum: 0 }
+        replacementValue: { type: number, minimum: 0 }
+        version: { type: integer, minimum: 1 }
+
+    RoomAssetDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
         roomId: { type: string, format: uuid }
-
+        roomNumber: { type: string, example: "P.302" }
         assetId: { type: string, format: uuid }
-
+        assetName: { type: string }
+        category: { type: string, enum: [APPLIANCE, FURNITURE] }
         serialNumber: { type: string, example: "DK-2026-992019" }
+        conditionGrade: { type: string, enum: [GRADE_A_NEW, GRADE_B_GOOD, GRADE_C_FAIR, BROKEN] }
+        customMonthlyFee: { type: number, example: 300000 }
+        installedDate: { type: string, format: date }
+        version: { type: integer }
 
-        conditionGrade: { type: string, enum: \[GRADE\_A\_NEW, GRADE\_B\_GOOD, GRADE\_C\_FAIR\] }
+    UpdateRoomAssetDto:
+      type: object
+      minProperties: 1
+      properties:
+        roomId: { type: string, format: uuid, description: Move the unit to another room of the building }
+        conditionGrade: { type: string, enum: [GRADE_A_NEW, GRADE_B_GOOD, GRADE_C_FAIR, BROKEN] }
+        customMonthlyFee: { type: number, minimum: 0 }
+        version: { type: integer, minimum: 1 }
 
-        customMonthlyFee: { type: number, minimum: 0, example: 300000 }
+    AssignRoomAssetDto:
+      type: object
+      required: [roomId, assetId, serialNumber]
+      properties:
+        roomId: { type: string, format: uuid }
+        assetId: { type: string, format: uuid }
+        serialNumber: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._/-]{2,99}$', example: "DK-2026-992019" }
+        conditionGrade: { type: string, enum: [GRADE_A_NEW, GRADE_B_GOOD, GRADE_C_FAIR, BROKEN], default: GRADE_A_NEW }
+        customMonthlyFee: { type: number, minimum: 0, description: Defaults to the catalogue item's standardMonthlyRentalFee }
+        installedDate: { type: string, format: date, description: Defaults to today (Vietnam time); not in the future }
+
+```
 
 ```yaml
     LoginDto:
@@ -2129,29 +3037,52 @@ components:
       description: One profile per PERSON (contract holder, roommate or child). Register every occupant.
       required: [fullName, idDocumentType, idCardNumber, gender, dateOfBirth, hometownAddress, permanentAddress, pdplConsentAccepted]
       properties:
-        fullName: { type: string, example: "Nguyễn Văn A" }
+        fullName: { type: string, maxLength: 150, example: "Nguyễn Văn A" }
         idDocumentType: { type: string, enum: [CCCD, PASSPORT], default: CCCD }
         idCardNumber:
           type: string
+          maxLength: 20
           example: "079099001234"
-          description: 12-digit CCCD, or a child's 12-digit personal identification number, or passport number. Encrypted at rest; blind-indexed.
-        idCardIssueDate: { type: string, format: date, nullable: true, example: "2022-05-10", description: Null for children without a card }
-        idCardIssuePlace: { type: string, nullable: true, example: "Bộ Công an" }
-        nationality: { type: string, minLength: 2, maxLength: 2, default: VN, example: VN }
+          description: 12-digit CCCD or a child's personal identification number (VN), or passport number. Encrypted at rest; blind-indexed.
+        idCardIssueDate: { type: string, format: date, nullable: true, example: "2022-05-10", description: Not in the future and not before the date of birth; null for children without a card }
+        idCardIssuePlace: { type: string, nullable: true, maxLength: 150, example: "Bộ Công an" }
+        nationality: { type: string, pattern: '^[A-Z]{2}$', default: VN, example: VN }
         gender: { type: string, enum: [MALE, FEMALE] }
-        dateOfBirth: { type: string, format: date, example: "1999-08-15" }
-        phone: { type: string, nullable: true, example: "0901234567", description: Optional for children }
+        dateOfBirth: { type: string, format: date, example: "1999-08-15", description: Not in the future, at most 120 years ago }
+        phone: { type: string, nullable: true, example: "0901234567", description: Required for adults; normalised to E.164 }
         email: { type: string, format: email, nullable: true }
-        hometownAddress: { type: string, example: "Quận 1, TP. Hồ Chí Minh" }
-        permanentAddress: { type: string, example: "123 Nguyễn Huệ, Phường Bến Nghé, TP.HCM" }
-        refundBankAccount: { type: string, nullable: true, example: "0071001234567" }
-        refundBankName: { type: string, nullable: true, example: "Vietcombank" }
+        hometownAddress: { type: string, maxLength: 255, example: "Quận 1, TP. Hồ Chí Minh" }
+        permanentAddress: { type: string, maxLength: 255, example: "123 Nguyễn Huệ, Phường Bến Nghé, TP.HCM" }
+        refundBankAccount: { type: string, nullable: true, pattern: '^[0-9]{6,19}$', example: "0071001234567" }
+        refundBankName: { type: string, nullable: true, maxLength: 100, example: "Vietcombank", description: Required with refundBankAccount }
         pdplConsentAccepted: { type: boolean, example: true, description: Mandatory consent (Law 91/2025/QH15) }
         consentGuardianTenantId:
           type: string
           format: uuid
           nullable: true
-          description: Required for a minor — the parent / guardian giving consent (Decree 13/2023/NĐ-CP, Art. 20)
+          description: Required for a minor and refused for an adult - an adult profile of the same building that has given consent (Decree 13/2023/NĐ-CP, Art. 20)
+
+    UpdateTenantDto:
+      type: object
+      minProperties: 1
+      description: Any CreateTenantDto field except pdplConsentAccepted, all optional; idCardNumber and idDocumentType are re-validated together
+      properties:
+        fullName: { type: string, maxLength: 150 }
+        idDocumentType: { type: string, enum: [CCCD, PASSPORT] }
+        idCardNumber: { type: string, maxLength: 20 }
+        idCardIssueDate: { type: string, format: date, nullable: true }
+        idCardIssuePlace: { type: string, nullable: true, maxLength: 150 }
+        nationality: { type: string, pattern: '^[A-Z]{2}$' }
+        gender: { type: string, enum: [MALE, FEMALE] }
+        dateOfBirth: { type: string, format: date }
+        phone: { type: string, nullable: true }
+        email: { type: string, format: email, nullable: true }
+        hometownAddress: { type: string, maxLength: 255 }
+        permanentAddress: { type: string, maxLength: 255 }
+        refundBankAccount: { type: string, nullable: true, pattern: '^[0-9]{6,19}$' }
+        refundBankName: { type: string, nullable: true, maxLength: 100 }
+        consentGuardianTenantId: { type: string, format: uuid, nullable: true }
+        version: { type: integer, minimum: 1 }
 
     TenantSafeResponseDto:
       type: object
@@ -2161,8 +3092,34 @@ components:
         idDocumentType: { type: string, enum: [CCCD, PASSPORT] }
         idCardMasked: { type: string, example: "********1234" }
         isMinor: { type: boolean, example: false }
-        phone: { type: string, nullable: true }
+        phone: { type: string, nullable: true, example: "+84901234567" }
         createdAt: { type: string, format: date-time }
+
+    TenantDetailDto:
+      allOf:
+        - $ref: '#/components/schemas/TenantSafeResponseDto'
+        - type: object
+          properties:
+            nationality: { type: string, example: VN }
+            gender: { type: string, enum: [MALE, FEMALE] }
+            dateOfBirth: { type: string, format: date }
+            email: { type: string, nullable: true }
+            idCardIssueDate: { type: string, format: date, nullable: true }
+            idCardIssuePlace: { type: string, nullable: true }
+            hometownAddress: { type: string }
+            permanentAddress: { type: string }
+            refundBankName: { type: string, nullable: true }
+            refundBankAccountMasked: { type: string, nullable: true, example: "*********4567" }
+            pdplConsentAcceptedAt: { type: string, format: date-time }
+            pdplConsentVersion: { type: string, example: v2026.1 }
+            guardian:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, format: uuid }
+                fullName: { type: string }
+            hasLogin: { type: boolean, description: A TENANT account is linked (created at move-in) }
+            version: { type: integer }
 
     CreateContractDto:
       type: object
@@ -2548,6 +3505,14 @@ components:
               - type: object
                 properties:
                   data: { $ref: '#/components/schemas/TokenPairDto' }
+```
+
+
+```yaml
+  headers:
+    PublicCacheControl:
+      description: "public, max-age=60, stale-while-revalidate=300 (with a weak ETag; If-None-Match → 304)"
+      schema: { type: string }
 ```
 
 ---

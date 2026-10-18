@@ -26,13 +26,16 @@ This document is the functional, security and statutory-compliance feature matri
 | 01 | **Room directory (80 rooms)** | `LANDLORD`, `PROPERTY_MANAGER`, `GUARD` | Housing Law 2023 (No. 27/2023/QH15) | `GET /properties/rooms`: paginated `SelectQueryBuilder` on `idx_rooms_bld_status_type` / `idx_rooms_available_covering`, 6-field projection, no sequential scans |
 | 02 | **Vacancy summary by room type** | `LANDLORD`, `PROPERTY_MANAGER`, `ACCOUNTANT` | — (operational KPI) | One `GROUP BY` query cached as `cache:{buildingId}:rooms:vacancies:summary` (single-flight + XFetch), invalidated through tag `tag:{buildingId}:rooms` on check-in, checkout and holder changes |
 | 03 | **Room detail in one query** | `LANDLORD`, `PROPERTY_MANAGER`; `TENANT` (own room only, A6) | Civil Code 2015 | Room, room type, active contract, **current contract holder**, **number of people living there** and **number with registered residence**, rented appliances — one joined query (no N+1) |
-| 04 | **Appliance & furniture catalogue** | `LANDLORD`, `PROPERTY_MANAGER` (tenant: own room, read) | Civil Code 2015, Art. 472–482 | `assets → room_assets → contract_assets`: serial numbers, condition grades (`GRADE_A_NEW`, `GRADE_B_GOOD`, `GRADE_C_FAIR`), replacement values, monthly rental fees |
+| 04 | **Appliance & furniture catalogue** | `LANDLORD`, `PROPERTY_MANAGER` (tenant: own room, read) | Civil Code 2015, Art. 472–482 | `assets → room_assets → contract_assets`: serial numbers, condition grades (`GRADE_A_NEW`, `GRADE_B_GOOD`, `GRADE_C_FAIR`, `BROKEN`), replacement values, monthly rental fees. `GET/POST /assets`, `PATCH /assets/{id}`; install `POST /assets/room-assignments`, re-grade / re-price / move `PATCH …/{id}`, remove `DELETE …/{id}` (soft delete) |
+| 04a | **Buildings** | `LANDLORD` | Tax Administration Law 38/2019/QH14 (tax code), Decree 52/2024 (cashless payments, VietQR) | `GET/POST /properties/buildings`, `PATCH /properties/buildings/{id}`: address, landlord tax code, VietQR bank account, electricity billing mode, water rate, room capacity (default 80). The creator is granted access to the new building |
+| 04b | **Room types & rooms** | `LANDLORD`, `PROPERTY_MANAGER` | Housing Law 2023 | `GET/POST /properties/room-types`, `PATCH …/{id}` (base rent; cached `catalogs:pricing`); `POST /properties/rooms` (never above the building's capacity), `PATCH /properties/rooms/{id}`: price override, type, capacity, status `AVAILABLE` / `RESERVED` / `MAINTENANCE` (`OCCUPIED` only through contracts), realtime `room.status_changed` |
+| 04c | **Public listing for the portfolio website** | Anyone (prospective tenants, students) — no sign-in | Law 91/2025/QH15 (no personal data published); Consumer Protection Law 2023 (accurate price information) | `GET /public/buildings`, `…/{slug}`, `…/{slug}/room-types`, `…/{slug}/floors`, `…/{slug}/rooms` (search by type, floor, price, area, capacity, availability), `…/{slug}/rooms/{roomNumber}` (equipment and monthly fees), `…/{slug}/vacancies`, `…/{slug}/assets`. Only listed buildings / rooms; availability only `AVAILABLE` / `UNAVAILABLE`; no occupants, contracts, serials, landlord, tax or bank data. Per-building cache evicted by staff changes, `Cache-Control` + `ETag`, per-IP throttling, kill switch `public_listing` (on by default, `404` when off). Landlord publishes with `isPubliclyListed` + `publicSlug`; managers can hide single rooms |
 
 ### 1.2 People, Shared Occupancy & Contracts
 
 | # | Feature | Roles | Legal anchor | Implementation |
 | :-- | :-- | :-- | :-- | :-- |
-| 05 | **One profile and one ID document per person** | `PROPERTY_MANAGER` | Law 91/2025/QH15, Decree 13/2023/NĐ-CP, Law on Identification 2023 | Every occupant — including children (personal identification number) and foreigners (passport) — has a `tenants` row. The ID number is encrypted with `FieldEncryptionTransformer` (AES-256-GCM, versioned keys); `id_card_hash` (HMAC-SHA256, `BLIND_INDEX_PEPPER`) gives exact, duplicate-safe lookups without decryption. One profile per building, reused when the person changes rooms |
+| 05 | **One profile and one ID document per person** | `PROPERTY_MANAGER` | Law 91/2025/QH15, Decree 13/2023/NĐ-CP, Law on Identification 2023 | Every occupant — including children (personal identification number) and foreigners (passport) — has a `tenants` row. The ID number is encrypted with `FieldEncryptionTransformer` (AES-256-GCM, versioned keys); `id_card_hash` (HMAC-SHA256, `BLIND_INDEX_PEPPER`) gives exact, duplicate-safe lookups without decryption. One profile per building, reused when the person changes rooms. `POST /tenants`, `GET /tenants` (search by name without diacritics or phone), `GET /tenants/lookup` (blind index, audited), `GET` / `PATCH /tenants/{id}`, `GET /tenants/me`. CCCD digits checked against gender and year of birth; masked everywhere, never decrypted outside the CT01 builder |
 | 06 | **Verifiable consent per person** | `TENANT`, `PROPERTY_MANAGER` | Law 91/2025/QH15; Decree 13/2023/NĐ-CP, Art. 20 (children) | `pdpl_consent_accepted_at` / `pdpl_consent_version` for everyone; for a child, consent given by a parent or guardian (`consent_guardian_tenant_id`); anonymisation after statutory retention (`pii_auto_anonymization` flag) |
 | 07 | **Concurrency-safe lease activation** | `LANDLORD`, `PROPERTY_MANAGER` | Housing Law 2023, Civil Code 2015 | Lock `lock:{buildingId}:room:contract:{roomId}` + partial unique index `idx_unique_active_contract_per_room`. The holder and all initial co-occupants are registered in the same transaction |
 | 08 | **1-month deposit escrow (*tiền đặt cọc*)** | `LANDLORD`, `PROPERTY_MANAGER`, `ACCOUNTANT` | Civil Code 2015, Art. 328 | `depositStatus = HELD` on check-in; immutable `deposit_ledgers` (collection, deductions, checkout offset, refunds, holder-transfer movements), each row naming the person who paid or received (`counterparty_tenant_id`) |
@@ -93,13 +96,16 @@ Every endpoint passes `JwtAuthGuard → CustomThrottlerGuard → RolesGuard → 
 
 | Resource / action | Permission | `LANDLORD` | `PROPERTY_MANAGER` | `ACCOUNTANT` | `GUARD` | `TENANT` |
 | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| **Public listing (`/public/*`)** | none — anonymous, read-only, published data only | ✅ | ✅ | ✅ | ✅ | ✅ (and anyone without an account) |
+| Publish a building on the portfolio site | `buildings:update:global` | ✅ GLOBAL | ❌ | ❌ | ❌ | ❌ |
+| Hide / show a room on the portfolio site | `rooms:update:department` | ✅ GLOBAL | ✅ | ❌ | ❌ | ❌ |
 | Building & tax settings | `buildings:manage:global` | ✅ GLOBAL | ❌ | ❌ | ❌ | ❌ |
 | Own sign-in, password & sessions | authenticated | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Staff accounts, roles & building access** | `users:manage:global` | ✅ GLOBAL | ❌ | ❌ | ❌ | ❌ |
 | Room directory & vacancy | `rooms:read:department` | ✅ GLOBAL | ✅ | 🔍 | 🔍 | ❌ |
 | **Room detail of the room they live in** | `rooms:read:own` | ✅ GLOBAL | ✅ | 🔍 | 🔍 | 🔍 OWN room only, while living there |
-| Room price & status | `rooms:update:department` | ✅ GLOBAL | ✅ | ❌ | ❌ | ❌ |
-| Appliance catalogue | `assets:manage:department` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN room |
+| Rooms & room types (create, price, status) | `rooms:create/update:department` | ✅ GLOBAL | ✅ | ❌ | ❌ | ❌ |
+| Appliance catalogue & installed units | `assets:manage:department` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN room (in room detail) |
 | Person profiles & encrypted CCCD | `tenants:manage:department` / `tenants:read:own` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN profile |
 | Lease creation & activation | `contracts:manage:department` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN contract |
 | **Occupant move-in / move-out** | `contracts:manage:department` | ✅ GLOBAL | ✅ | 🔍 | ❌ | 🔍 OWN occupancy |
@@ -136,6 +142,8 @@ A tenant user is linked to their own person profile (`tenants.user_id`), so `OWN
 |  zod config -> migrations Job (RLS, WORM, occupancy constraints) -> reference seeds             |
 |  Helmet -> CORS -> JwtAuthGuard -> Throttler -> Permissions -> X-Building-ID -> RlsService       |
 |  Sign-in: phone + password (+ OTP for LANDLORD / ACCOUNTANT) -> 15-min JWT + rotating refresh  |
+|  Portfolio site: anonymous /public/* (published rooms, floors, vacancies, equipment) -> sign-in    |
+|    for the management area                                                                     |
 +------------------------------------------------------------------------------------------------+
                                             │
 +------------------------------------------------------------------------------------------------+

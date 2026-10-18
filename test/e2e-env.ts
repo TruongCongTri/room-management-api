@@ -40,6 +40,8 @@ for (const [key, value] of Object.entries(defaults)) {
  * ở đầu MỖI file - với --runInBand các file dùng chung process.env của worker, giá trị bị ghi đè sẽ rò sang file sau.
  */
 const PER_FILE_BASELINE: Record<string, string> = {
+  DB_MASTER_USER: process.env.E2E_DB_OWNER_USER ?? 'postgres',
+  DB_MASTER_PASSWORD: process.env.E2E_DB_OWNER_PASSWORD ?? 'postgres',
   THROTTLE_LIMIT: '3',
   THROTTLE_SENSITIVE_LIMIT: '5',
   AUTH_OTP_DEBUG_ECHO: 'false',

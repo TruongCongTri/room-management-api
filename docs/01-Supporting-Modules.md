@@ -203,7 +203,7 @@ src/
 #### 3.2 Security headers (`src/core/security/headers/`)
 
 * Helmet with strict CSP, HSTS (1 year, subdomains), `X-Frame-Options: DENY`, `nosniff`; relaxed CSP only on Swagger paths.
-* CORS whitelist from `ALLOWED_ORIGINS`: exact origins, `*.domain` (https subdomains) and `/regex/`. `*` is rejected in production.
+* CORS whitelist from `ALLOWED_ORIGINS`: exact origins, `*.domain` (https subdomains) and `/regex/`. `*` is rejected in production. The portfolio website's origin must be listed for the `/public/*` endpoints (document 04, 1.5).
 
 #### 3.3 Encryption (`src/core/security/encryption/`)
 
@@ -213,7 +213,7 @@ src/
 
 #### 3.4 Throttler (`src/core/security/throttler/`)
 
-* Redis-backed counters in a shared window (`THROTTLE_TTL`). Tiers: `@ThrottlePublic()` (default, `THROTTLE_LIMIT` = 60), `@ThrottleSearch()` (100), `@ThrottleSensitive()` (5: login, OTP, checkout, deposit deduction, tax export), `@SkipAllThrottles()` (probes, Prometheus).
+* Redis-backed counters in a shared window (`THROTTLE_TTL`). Tiers: `@ThrottlePublic()` (default, `THROTTLE_LIMIT` = 60), `@ThrottleSearch()` (100), `@ThrottleSensitive()` (5: login, OTP, checkout, deposit deduction, tax export), `@SkipAllThrottles()` (probes, Prometheus). Anonymous `/public/*` listing requests are tracked per IP: `@ThrottlePublic()` on detail endpoints, `@ThrottleSearch()` on the room search.
 * `JwtAuthGuard` runs **before** the throttler, so authenticated callers are tracked as `user:{id}` (people sharing the building's NAT never block each other); anonymous callers as `ip:{clientIp}`. `429` responses carry `Retry-After` and `SEC_RATE_LIMIT_EXCEEDED`.
 
 #### 3.5 Idempotency (`src/core/security/idempotency/`)
@@ -259,6 +259,8 @@ A room can be shared by several people. **Every person** has an ID document (CCC
 * **Keys:** `cache:{buildingId|global}:{key}`; tag sets `tag:{buildingId}:{tag}` (e.g. `tag:{buildingId}:rooms`). One building can never read another's entries.
 * **`getOrSet()`:** single-flight on cold keys (concurrent readers share one computation) + **XFetch** probabilistic early recomputation in the background (`CACHE_XFETCH_BETA`).
 * **`invalidateTag()`:** `SSCAN` in batches + `UNLINK` (never `KEYS *`), also clears local entries. `@Cacheable()` / `@HttpCache()` decorators available.
+* **Anonymous reads (public listing):** a request without a building context would use the `global` namespace and could never be evicted by building tags. The public listing therefore resolves the building from its slug and runs inside `RequestContextService.runWithContext({ tenantId: buildingId })`, so its entries are `cache:{buildingId}:public:*`, tagged `public` / `rooms` / `catalogs` / `assets` and evicted by the staff changes (`runInBuildingScope()` keeps user and trace id, never marks the request as a background job).
+* **`@PublicCacheControl(maxAgeSeconds)` + `PublicCacheControlInterceptor`** (module 1b, route-level so it sees the handler data inside the envelope): sets `Cache-Control: public, max-age=…, stale-while-revalidate=300` and a weak `ETag` (hash of the response body); answers `304 Not Modified` when `If-None-Match` matches. Only for anonymous, non-personal responses.
 
 #### 4.3 `DistributedLockModule` (`src/infrastructure/lock/`)
 
@@ -274,7 +276,7 @@ A room can be shared by several people. **Every person** has an ID document (CCC
   | `monthlyBilling(buildingId, yyyymm)` | `cron:billing:{buildingId}:{YYYYMM}` | One pod per billing run |
   | `paymentTransaction(bankTxnId)` | `payment:{bankTxnId}` | Double-crediting a webhook |
 
-* Retries with exponential backoff + full jitter (`LOCK_RETRY_*`); `autoRenew` watchdog extends at 50 % of TTL and aborts `handle.signal` if the lock is lost; `minHoldMs` keeps very fast cron locks for a minimum window (clock drift). `@DistributedLock('room:contract:{0}')` template decorator.
+* Retries with exponential backoff + full jitter (`LOCK_RETRY_*`); `autoRenew` watchdog extends at 50 % of TTL and aborts `handle.signal` if the lock is lost; `minHoldMs` keeps very fast cron locks for a minimum window (clock drift). `@DistributedLock('room:contract:{0}')` template decorator. When all retries fail the caller gets `409 RES_LOCKED` (retryable); the internal lock key is only logged, never returned.
 
 #### 4.4 `OutboxModule` (`src/infrastructure/outbox/`)
 
@@ -379,8 +381,8 @@ A room can be shared by several people. **Every person** has an ID document (CCC
 #### 8.1 `SwaggerModule` (`src/infrastructure/swagger/`)
 
 * Enabled by `SWAGGER_ENABLED` (default: outside production) under `SWAGGER_PATH` (`api/docs`):
-  * `/api/docs` — internal, every operation; `/api/docs/admin` — landlord / manager / accountant; `/api/docs/guard` — guard mobile app; `/api/docs/external` — tenant self-service and webhooks. JSON at `<path>-json`.
-* `@ApiAudience('admin', 'guard')` assigns operations to portals; untagged operations appear only in the internal document. Global Bearer auth and `X-Building-ID` parameter.
+  * `/api/docs` — internal, every operation; `/api/docs/admin` — landlord / manager / accountant; `/api/docs/guard` — guard mobile app; `/api/docs/external` — tenant self-service and webhooks; `/api/docs/public` — the read-only `/public/*` listing for the portfolio website (no sign-in). JSON at `<path>-json`.
+* `@ApiAudience('admin', 'guard', 'external', 'public')` assigns operations to portals; untagged operations appear only in the internal document. Global Bearer auth and `X-Building-ID` parameter.
 
 #### 8.2 `VersioningModule` (`src/infrastructure/versioning/`)
 
@@ -393,7 +395,7 @@ A room can be shared by several people. **Every person** has an ID document (CCC
 
 #### 8.4 `FeatureFlagModule` (`src/core/feature-flag/`)
 
-* Baseline rules in `FEATURE_FLAGS` (JSON: `enabled`, `percentage`, `allowedTenantIds` = building ids, `allowedUserIds`), runtime overrides in the Redis hash `feature_flags`, refreshed every `FEATURE_FLAG_CACHE_TTL_MS` by every pod. Stable percentage rollout by user, then building. `@RequireFeature()` + global `FeatureFlagGuard` (`RES_FEATURE_DISABLED`).
+* Baseline rules in `FEATURE_FLAGS` (JSON: `enabled`, `percentage`, `allowedTenantIds` = building ids, `allowedUserIds`), runtime overrides in the Redis hash `feature_flags`, refreshed every `FEATURE_FLAG_CACHE_TTL_MS` by every pod. Stable percentage rollout by user, then building. `@RequireFeature()` + global `FeatureFlagGuard` (`404 RES_FEATURE_DISABLED`). Kill-switch flags can declare a code default (`FEATURE_FLAG_CODE_DEFAULTS`, e.g. `public_listing: enabled`) that `FEATURE_FLAGS` and Redis override; every other flag stays off until configured.
 * **Flags** (`FEATURE_FLAGS`): `evn_tiered_quota` (tiered quota vs. flat tier-3 pricing), `e_invoice_auto_dispatch`, `zalo_zns_invoice`, `late_payment_penalty`, `pii_auto_anonymization`.
 
 ---

@@ -40,8 +40,8 @@ describe('LoginLockService (lock per phone number)', () => {
     for (let i = 0; i < 9; i++) {
       await fail(4);
       const outcome = await lock.recordFailure(PHONE);
-      lockLengths.push(outcome.lockSeconds);
-      jest.advanceTimersByTime(outcome.lockSeconds * 1000); // chờ hết khóa rồi thử sai tiếp
+      lockLengths.push(outcome.lockSeconds!);
+      jest.advanceTimersByTime(outcome.lockSeconds! * 1000); // chờ hết khóa rồi thử sai tiếp
     }
     expect(lockLengths).toEqual([900, 1800, 3600, 7200, 14400, 28800, 57600, 86400, 86400]);
   });

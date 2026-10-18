@@ -56,6 +56,15 @@ describe('Identity module (HTTP, real PostgreSQL + Redis)', () => {
     return { e164: `+84${national}`, phone: `0${national.slice(0, 3)} ${national.slice(3, 6)} ${national.slice(6)}` };
   };
 
+  /** user_building_access → buildings là FK thật (module 1): tòa nhà phải tồn tại trước khi cấp quyền */
+  const ensureBuilding = async (id: string) => {
+    await dataSource.query(
+      `INSERT INTO buildings (id, code, name, address_line, ward, district, landlord_tax_code, landlord_full_name)
+       VALUES ($1, $2, 'Identity e2e', 'x', 'x', 'x', '0312345678', 'x') ON CONFLICT (id) DO NOTHING`,
+      [id, `ID-${id.slice(0, 8)}-${id.slice(-4)}`.toUpperCase()],
+    );
+  };
+
   const createUser = async (
     roles: string[],
     options: { status?: string; buildings?: string[]; password?: string | null } = {},
@@ -70,6 +79,7 @@ describe('Identity module (HTTP, real PostgreSQL + Redis)', () => {
     );
     for (const role of roles) await dataSource.query(`INSERT INTO user_roles (user_id, role_code) VALUES ($1, $2)`, [id, role]);
     for (const b of options.buildings ?? [BUILDING_A]) {
+      await ensureBuilding(b);
       await dataSource.query(`INSERT INTO user_building_access (user_id, building_id) VALUES ($1, $2)`, [id, b]);
     }
     return { id, e164, phone };
@@ -105,6 +115,7 @@ describe('Identity module (HTTP, real PostgreSQL + Redis)', () => {
     redis = app.get<Redis>(REDIS_CLIENT);
     expect(await runSeeds()).toBe(0);
     passwordHash = await argon2.hash(PASSWORD, ARGON2_OPTIONS);
+    for (const b of [BUILDING_A, BUILDING_B]) await ensureBuilding(b);
   });
 
   beforeEach(async () => {
@@ -448,7 +459,7 @@ describe('Identity module (HTTP, real PostgreSQL + Redis)', () => {
         status: 'ACTIVE',
         roles: ['TENANT'],
         activeBuildingId: BUILDING_A,
-        buildings: [{ id: BUILDING_A, name: null }],
+        buildings: [{ id: BUILDING_A, name: 'Identity e2e' }], // tên từ bảng buildings (module 1)
         residence: null,
       });
       expect(me.permissions).toEqual(expect.arrayContaining(['rooms:read:own', 'invoices:read:own', 'assets:read:own']));

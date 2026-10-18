@@ -11,6 +11,9 @@ This document fixes the **order** in which the core feature modules of documents
 | D1 | **Enterprise-grade identity with phone-number sign-in** (no email login): argon2id passwords, OTP second factor for `LANDLORD` / `ACCOUNTANT`, OTP account activation and password reset, rotating refresh tokens with reuse detection, visible / revocable sessions, login lock, no account enumeration. Staff accounts are created by the landlord; tenant accounts are created automatically for adult occupants with a phone number when they move in. | 02 §2.0, 03 §3.0, 04 §1.4 + tag *Identity & Authentication*, 05 §1.0 |
 | D2 | **A tenant can view only the room they currently live in** — `GET /properties/rooms/mine`, or `GET /properties/rooms/{id}` for that same room (`RoomAccessGuard` + `OCCUPANCY_SELF_SCOPE`). Other rooms → `403`; access ends at move-out. No room list or vacancy data for tenants. | 02 §2.0.2, 04 room paths, 05 A6 + RBAC |
 | D3 | **Room detail is completed in two steps.** Module 1 ships room detail with `activeContract = null` and zero occupants (the contract tables do not exist yet); module 3 extends the same single query with the active contract, holder and occupant counts. `OCCUPANCY_SELF_SCOPE` defaults to "no room" until module 3, so tenants are denied (fail-closed) in between. | this document |
+| D5 | **Module 1 includes management endpoints** that docs 03/05 implied but doc 04 lacked: buildings (landlord), room types, room create / update (price, status, type), appliance catalogue, and update / remove of installed units. Added to docs 04/05 before implementation. | 04 *Properties* & *Assets* tags, 05 rows 04a/04b |
+| D6 | **Public listing for the portfolio website (module 1b):** anonymous, read-only `/public/*` endpoints for published buildings, room types, floors / room numbers, room search, room detail with equipment, vacancies and the equipment catalogue; buildings opt in (`isPubliclyListed` + `publicSlug`), rooms can be hidden. The portfolio site's management area uses the existing authenticated endpoints. | 01 §3.2 / 3.4 / 4.2 / 8.1, 02 §3.1b, 03 §4 6b, 04 §1.5 + tag *Public Listing*, 05 row 04c + RBAC |
+| D7 | **Module 2 adds profile management** that doc 04 lacked: `GET /tenants` (search), `GET /tenants/{id}`, `PATCH /tenants/{id}`, `GET /tenants/me`, next to `POST /tenants` and `/tenants/lookup`. ID-scan upload, full-number reveal and PDPL data-subject requests stay out of scope. | 02 §2.1b, 03 Tenant + §4 6c, 04 *Tenants*, 05 row 05 |
 | D4 | Shared-room rules already agreed: holder must be 18+, with an ID document and consent; deposit default `CARRY_OVER` on holder transfer; invoices issued before a transfer stay with the outgoing holder; a guardian gives consent for children. | 02 §5.4, 03 §3.2 |
 
 ---
@@ -22,8 +25,9 @@ Each module brings its **own migration** (tables, partial indexes, CHECKs, trigg
 | # | Module | Scope | Tables (doc 03) | Endpoints (doc 04) | Depends on |
 | :-- | :-- | :-- | :-- | :-- | :-- |
 | **0** | **Identity** | Phone sign-in, OTP, sessions, staff accounts, `PERMISSION_RULES_LOADER`, `OCCUPANCY_SELF_SCOPE` contract (default deny) | `users`, `user_roles`, `user_building_access`, `auth_sessions` (+ Redis state §3.0 I-5) | `/auth/*` (12 operations), `/users`, `/users/{id}` | supporting layer (JWT, access control, Redis, notification, audit, throttler) |
-| **1** | **Properties & Assets** | Buildings, room types, 80 rooms, appliance catalogue and room assignment, vacancy summary (XFetch + tags), tenant room guard | `buildings`, `room_types`, `rooms`, `assets`, `room_assets` (+ FK `user_building_access → buildings`) | `/properties/rooms`, `/properties/rooms/vacancies/summary`, `/properties/rooms/mine`, `/properties/rooms/{id}` (without contract part, D3), `/assets/room-assignments` | 0 |
-| **2** | **Tenants** | One profile per person, encrypted ID + blind index, consent (guardian for children), lookup by CCCD, `tenants.user_id` link | `tenants` | `/tenants`, `/tenants/lookup` | 0, 1 |
+| **1** | **Properties & Assets** | Buildings, room types, 80 rooms, appliance catalogue and room assignment, vacancy summary (XFetch + tags), tenant room guard | `buildings`, `room_types`, `rooms`, `assets`, `room_assets` (+ FK `user_building_access → buildings`) | `/properties/buildings` (+`/{id}`), `/properties/room-types` (+`/{id}`), `/properties/rooms` (list, create), `/properties/rooms/vacancies/summary`, `/properties/rooms/mine`, `/properties/rooms/{id}` (detail without contract part — D3 — and update), `/assets` (+`/{id}`), `/assets/room-assignments` (+`/{id}`) — D5 | 0 |
+| **1b** | **Public listing** | Anonymous read-only listing for the portfolio website; publishing fields; `@PublicCacheControl`; new Swagger portal `public`; feature flag `public_listing` | `buildings` (+ `is_publicly_listed`, `public_slug`, `public_description`), `rooms` (+ `is_publicly_listed`) | `/public/buildings`, `/public/buildings/{slug}` (+ `/room-types`, `/floors`, `/rooms`, `/rooms/{roomNumber}`, `/vacancies`, `/assets`); publishing fields on `PATCH /properties/buildings/{id}` and `PATCH /properties/rooms/{id}` | 1 |
+| **2** | **Tenants** | One profile per person, encrypted ID + blind index, consent (guardian for children), lookup by CCCD, `tenants.user_id` link | `tenants` | `POST`/`GET /tenants`, `/tenants/lookup`, `/tenants/me`, `GET`/`PATCH /tenants/{id}` (D7) | 0, 1 |
 | **3** | **Contracts** | Draft / activate / renew, 1-month deposit ledger, occupants move in / out, residence status, holder transfer + history, vehicles, extra services, rented appliances; real `OCCUPANCY_SELF_SCOPE`; tenant-account provisioning on `occupant.moved_in`; room detail completed (D3) | `contracts`, `contract_occupants`, `contract_holder_transfers`, `contract_assets`, `service_catalogs`, `contract_services`, `tenant_vehicles`, `deposit_ledgers` (+ consistency triggers) | `/contracts`, `/contracts/{id}/deposit-ledger`, `/contracts/{id}/occupants…`, `/contracts/{id}/primary-holder/…` | 1, 2 |
 | **4** | **Metering** | Presigned photo upload, readings with rollover / reset (approval), spike alerts, missing-room checklist | `meter_readings` | `/metering/presigned-url`, `/metering/records`, `/metering/cycles/{month}/missing-rooms` | 1, 3 |
 | **5** | **Billing** | EVN tariff (registered-headcount quota vs. flat tier 3), month-end invoices (distributed cron → queue worker → PDF), mid-month checkout settlement, VietQR webhook | `invoices`, `invoice_line_items`, `payment_transactions`, `checkout_settlements` | `/billing/checkout/execute`, `/webhooks/payments/vietqr` | 3, 4 |
@@ -42,6 +46,25 @@ Identity touches code that already exists; these changes are part of module 0, n
 * Dependency: `argon2`.
 * Dev seed: one account per role with known test passwords (`npm run db:seed`, refused when `NODE_ENV=production`).
 * Done as part of module 0 as well: `audit_logs.actor_email` renamed to `actor_label` (masked phone); `HttpExceptionFilter` sends `Retry-After` for errors carrying `retryAfterSeconds` (423 lock, 429 OTP limits); new config `AUTH_*` (see `.env.example`); `test/e2e-env.ts` resets per-file overrides so e2e files cannot leak settings into each other.
+
+### 2.5 Module 2 — notes for running it locally
+
+* `npm run db:seed` adds three people to building A: the dev tenant (CCCD `079099001234`, linked to the `0901000005` login → `GET /tenants/me`), their 11-year-old daughter (personal ID `079315004321`, guardian = the dev tenant) and a Korean resident (passport `M12345678`).
+* A valid test CCCD: 3-digit province + gender/century digit (0/1 male/female 1900s, 2/3 2000s) + 2-digit birth year + 6 digits, e.g. `079095123456` for a man born in 1995.
+
+### 2.4 Module 1b — notes for running it locally
+
+* `npm run db:seed` publishes building A as `sunrise-quan-7`; building B stays unpublished (`404` on the public site).
+* Public routes need no token and no `X-Building-ID`: `GET /api/v1/public/buildings/sunrise-quan-7/rooms?availability=AVAILABLE`.
+* Switch the public site off without a deploy: Redis hash `feature_flags` → `public_listing = {"enabled":false}` (or `FEATURE_FLAGS` in the env).
+* Add the portfolio website origin to `ALLOWED_ORIGINS`.
+
+### 2.3 Module 1 — notes for running it locally
+
+* `npm run db:seed` creates building A (`b1000000-…-0001`, 80 rooms P.101 → P.810, 3 room types, catalogue, 10 air conditioners on floor 1) and building B (`b2000000-…-0002`, 5 rooms) before the dev accounts.
+* Building-scoped endpoints need `X-Building-ID`; a landlord who registers a building calls `POST /auth/refresh` to use it.
+* The Postman folder *01 Properties & Assets* registers a fresh building on every run (building A is full at 80 rooms, which the folder also checks).
+* E2E: `test/properties.e2e-spec.ts` runs the app as `app_user` (RLS enforced); `test/properties-app-layer.e2e-spec.ts` runs it as superuser (RLS bypassed) to prove the application-level building filter on its own.
 
 ### 2.2 Module 0 — how to run it locally
 
@@ -63,6 +86,7 @@ A module is done only when **all** of the following hold. Then work stops and wa
 * Migration matches document 03 exactly: columns, types, defaults, partial unique indexes, CHECKs, triggers, RLS (`setup_building_rls`) for building-scoped tables.
 * Applied to the local database and verified **up → down → up**.
 * Entities match the migration (`npm run typeorm -- schema:log` shows no pending changes).
+* `schema:log` does **not** compare CHECK expressions: every CHECK with a regex or literal is exercised by an e2e test that inserts a valid row and an invalid one (lesson from module 2, where a double-escaped `\+` made every phone number fail).
 
 ### 3.2 Services use the supporting modules where the docs say so
 
@@ -111,9 +135,10 @@ A module is done only when **all** of the following hold. Then work stops and wa
 | :-- | :-- | :-- |
 | — | Supporting modules (doc 01) | ✅ Done |
 | 0 | Identity | ✅ Done (2026-10-17): 508 unit + 102 e2e tests, 21/21 mutations caught, Postman 47 requests / 58 assertions |
-| 1 | Properties & Assets | ⏳ Waiting for go-ahead |
-| 2 | Tenants | ⬜ Not started |
-| 3 | Contracts | ⬜ Not started |
+| 1 | Properties & Assets | ✅ Done (2026-10-18): 538 unit + 135 e2e tests (RLS as `app_user` + app-layer as superuser), all mutations caught, Postman 87 requests / 100 assertions — see `modules-docs/01-properties-assets.md` |
+| 1b | Public listing (portfolio website) | ✅ Done (2026-10-18): 558 unit + 146 e2e tests, 13/13 mutations caught, Postman 109 requests / 129 assertions — see `modules-docs/01b-public-listing.md` |
+| 2 | Tenants | ✅ Done (2026-10-18): 594 unit + 163 e2e tests, 16/16 mutations caught, Postman 131 requests / 158 assertions — see `modules-docs/02-tenants.md` |
+| 3 | Contracts | ⏳ Waiting for go-ahead |
 | 4 | Metering | ⬜ Not started |
 | 5 | Billing | ⬜ Not started |
 | 6 | Compliance VN | ⬜ Not started |

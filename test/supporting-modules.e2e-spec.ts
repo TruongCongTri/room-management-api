@@ -55,6 +55,10 @@ import { DOMAIN_EVENTS } from '../src/infrastructure/events/constants/event.cons
 import { runSeeds } from '../src/core/database/seed-runner';
 import { MetricsService } from '../src/infrastructure/metrics/services/metrics.service';
 
+/** Số điện thoại duy nhất (E.164 15 chữ số, tăng dần): test DB giữ dữ liệu giữa các lần chạy nên không dùng số ngẫu nhiên ngắn */
+let phoneCounter = 0;
+const uniquePhone = () => `+${Date.now()}${String(phoneCounter++ % 100).padStart(2, '0')}`;
+
 const BUILDING_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const BUILDING_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
@@ -301,7 +305,7 @@ describe('Supporting modules (integration, real PostgreSQL + Redis)', () => {
       await inBuilding(BUILDING_A, async () => {
         const handle = await locks.acquire(key, { retryCount: 0, ttlMs: 5000 });
         expect(await locks.release({ ...handle, token: 'stale-token' })).toBe(false);
-        await expect(locks.acquire(key, { retryCount: 0 })).rejects.toThrow(/Failed to acquire/);
+        await expect(locks.acquire(key, { retryCount: 0 })).rejects.toMatchObject({ response: expect.objectContaining({ errorCode: 'RES_LOCKED' }) });
         expect(await locks.release(handle)).toBe(true);
         await expect(locks.acquire(key, { retryCount: 0 })).resolves.toBeDefined();
       });
@@ -321,7 +325,7 @@ describe('Supporting modules (integration, real PostgreSQL + Redis)', () => {
       await inBuilding(BUILDING_A, async () => {
         const handle = await locks.acquire(key, { retryCount: 0, ttlMs: 400, autoRenew: true });
         await new Promise((resolve) => setTimeout(resolve, 1100));
-        await expect(locks.acquire(key, { retryCount: 0 })).rejects.toThrow(/Failed to acquire/);
+        await expect(locks.acquire(key, { retryCount: 0 })).rejects.toMatchObject({ response: expect.objectContaining({ errorCode: 'RES_LOCKED' }) });
         expect(handle.lost).toBe(false);
         await locks.release(handle);
       });
@@ -553,8 +557,8 @@ describe('Supporting modules (integration, real PostgreSQL + Redis)', () => {
     const userWithRole = async (role: RentalRole): Promise<string> => {
       const [{ id }] = await dataSource.query(
         `INSERT INTO users (phone_e164, full_name, status, password_hash)
-         VALUES ('+8490' || lpad((floor(random() * 10000000))::int::text, 7, '0'), $1, 'ACTIVE', 'x') RETURNING id`,
-        [`it-${role}`],
+         VALUES ($2, $1, 'ACTIVE', 'x') RETURNING id`,
+        [`it-${role}`, uniquePhone()],
       );
       await dataSource.query(`INSERT INTO user_roles (user_id, role_code) VALUES ($1, $2)`, [id, role]);
       return id;

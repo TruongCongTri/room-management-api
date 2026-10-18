@@ -1212,7 +1212,8 @@
                   "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
                   "",
                   "pm.test('200 tokens', () => { pm.response.to.have.status(200); pm.expect(json.data.user.roles).to.eql(['LANDLORD']); });",
-                  "pm.environment.set('landlordAccessToken', json.data.accessToken);"
+                  "pm.environment.set('landlordAccessToken', json.data.accessToken);",
+                  "pm.environment.set('landlordRefreshToken', json.data.refreshToken);"
                 ]
               }
             }
@@ -2368,6 +2369,4763 @@
                   "};",
                   "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
                   "expectError(401, 'AUTH_SESSION_REVOKED');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 Properties & Assets",
+      "item": [
+        {
+          "name": "01 Login - property manager A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{pmPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('pmAccessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 Login - tenant A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{tenantPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('tenantAccessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 Login - guard A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{guardPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('guardAccessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 Buildings - landlord lists own buildings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/buildings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "buildings"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200: building A with its 80 rooms, never building B', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const ids = json.data.map((b) => b.id);",
+                  "  pm.expect(ids).to.include(pm.environment.get('buildingA'));",
+                  "  pm.expect(ids).to.not.include(pm.environment.get('buildingB'));",
+                  "  const a = json.data.find((b) => b.id === pm.environment.get('buildingA'));",
+                  "  pm.expect(a).to.include({ roomCount: 80, totalRoomsCapacity: 80 });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 Buildings - property manager → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/buildings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "buildings"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(403, 'AUTH_FORBIDDEN_RESOURCE');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06 Buildings - register a new building (capacity 2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/buildings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "buildings"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{newBuildingCode}}\",\n  \"name\": \"Tòa nhà Postman\",\n  \"addressLine\": \"1 Lê Lợi\",\n  \"ward\": \"Phường Bến Nghé\",\n  \"district\": \"Quận 1\",\n  \"landlordTaxCode\": \"0312345678\",\n  \"landlordFullName\": \"Chủ nhà A\",\n  \"bankAccountNumber\": \"0071000123456\",\n  \"bankBinCode\": \"970436\",\n  \"totalRoomsCapacity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('newBuildingCode', 'pm-' + Math.floor(Math.random() * 1e8));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 empty building, code upper-cased', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.data.code).to.eql(pm.environment.get('newBuildingCode').toUpperCase());",
+                  "  pm.expect(json.data.roomCount).to.eql(0);",
+                  "});",
+                  "pm.environment.set('newBuildingId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07 Buildings - same code again → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/buildings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "buildings"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{newBuildingCode}}\",\n  \"name\": \"Dup\",\n  \"addressLine\": \"x\",\n  \"ward\": \"x\",\n  \"district\": \"x\",\n  \"landlordTaxCode\": \"0312345678\",\n  \"landlordFullName\": \"x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(409, 'RES_ALREADY_EXISTS');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "08 Buildings - capacity of A below its 80 rooms → 409",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/buildings/{{buildingA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "buildings",
+                "{{buildingA}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"totalRoomsCapacity\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(409, 'BIZ_BUILDING_CAPACITY_EXCEEDED');",
+                  "pm.test('details carry the room count', () => pm.expect(json.details[0].roomCount).to.eql(80));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09 Refresh - landlord token now lists the new building",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{landlordRefreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 with the new building', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.user.buildingIds).to.include(pm.environment.get('newBuildingId'));",
+                  "});",
+                  "pm.environment.set('landlordAccessToken', json.data.accessToken);",
+                  "pm.environment.set('landlordRefreshToken', json.data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10 Room types - building A (cached)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guardAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/room-types",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "room-types"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 three types by rent', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.map((t) => t.code)).to.eql(['STUDIO', '1BR_DELUXE', 'DUPLEX']);",
+                  "});",
+                  "pm.environment.set('roomTypeAId', json.data[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11 Rooms - directory sorted by price, 6 fields",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms?limit=10&sortBy=effectivePrice&sortOrder=DESC",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "effectivePrice"
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "DESC"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 page of 10 of 80', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data).to.have.lengthOf(10);",
+                  "  pm.expect(json.meta.pagination.totalItems).to.eql(80);",
+                  "  pm.expect(Object.keys(json.data[0]).sort()).to.eql(['effectivePrice', 'floor', 'id', 'roomNumber', 'roomTypeName', 'status']);",
+                  "  pm.expect(json.data[0].effectivePrice).to.be.at.least(json.data[9].effectivePrice);",
+                  "});",
+                  "pm.environment.set('roomAId', json.data[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12 Rooms - floor 8 in maintenance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms?floor=8&status=MAINTENANCE",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms"
+              ],
+              "query": [
+                {
+                  "key": "floor",
+                  "value": "8"
+                },
+                {
+                  "key": "status",
+                  "value": "MAINTENANCE"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('P.810 only', () => { pm.response.to.have.status(200); pm.expect(json.data.map((r) => r.roomNumber)).to.eql(['P.810']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13 Rooms - invalid floor → 400",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms?floor=31",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms"
+              ],
+              "query": [
+                {
+                  "key": "floor",
+                  "value": "31"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(400, 'REQ_VALIDATION_ERROR');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14 Vacancy summary - building A",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/vacancies/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "vacancies",
+                "summary"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200: 80 rooms over 3 types, 1 in maintenance', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.reduce((n, t) => n + t.totalRooms, 0)).to.eql(80);",
+                  "  pm.expect(json.data.find((t) => t.roomTypeName === 'Duplex').maintenanceRooms).to.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15 Rooms - building A is full → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomNumber\": \"P.999\",\n  \"floor\": 9,\n  \"areaSqm\": 30,\n  \"roomTypeId\": \"{{roomTypeAId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(409, 'BIZ_BUILDING_CAPACITY_EXCEEDED');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16 Room detail - building A room",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/{{roomAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "{{roomAId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 detail, no contract yet (module 3)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.activeContract).to.eql(null);",
+                  "  pm.expect(json.data.rentedAssets).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17 Tenant - room list → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(403, 'AUTH_FORBIDDEN_RESOURCE');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "18 Tenant - a room they do not live in → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/{{roomAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "{{roomAId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(403, 'AUTH_FORBIDDEN_RESOURCE');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "19 Tenant - /rooms/mine before moving in → 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/mine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "mine"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(404, 'BIZ_NO_ACTIVE_ROOM');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "20 Staff - /rooms/mine → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/mine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "mine"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(403, 'AUTH_FORBIDDEN_RESOURCE');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "21 New building - room type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/room-types",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "room-types"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"studio\",\n  \"name\": \"Studio\",\n  \"baseMonthlyRent\": 7000000,\n  \"standardAreaSqm\": 30,\n  \"defaultMaxOccupants\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201', () => { pm.response.to.have.status(201); pm.expect(json.data.code).to.eql('STUDIO'); });",
+                  "pm.environment.set('newTypeId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "22 New building - room p.101",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomNumber\": \"p.101\",\n  \"floor\": 1,\n  \"areaSqm\": 31.5,\n  \"roomTypeId\": \"{{newTypeId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 AVAILABLE at base rent', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.data).to.include({ roomNumber: 'P.101', status: 'AVAILABLE', effectiveRent: 7000000, maxOccupants: 2, version: 1 });",
+                  "});",
+                  "pm.environment.set('newRoomId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "23 New building - same room number → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomNumber\": \"P.101\",\n  \"floor\": 1,\n  \"areaSqm\": 30,\n  \"roomTypeId\": \"{{newTypeId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(409, 'RES_ALREADY_EXISTS');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "24 New building - building A's room type → 404",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomNumber\": \"P.102\",\n  \"floor\": 1,\n  \"areaSqm\": 30,\n  \"roomTypeId\": \"{{roomTypeAId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(404, 'RES_NOT_FOUND');",
+                  "pm.test('field roomTypeId', () => pm.expect(json.details[0].field).to.eql('roomTypeId'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "25 Room - maintenance + price override (version 1)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/{{newRoomId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "{{newRoomId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"MAINTENANCE\",\n  \"priceOverride\": 7500000,\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 version 2, override applied', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data).to.include({ status: 'MAINTENANCE', effectiveRent: 7500000, version: 2 });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26 Room - stale version → 409",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/{{newRoomId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "{{newRoomId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"AVAILABLE\",\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(409, 'RES_CONCURRENCY_CONFLICT');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "27 Room - OCCUPIED by hand → 400",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/{{newRoomId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "{{newRoomId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"OCCUPIED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(400, 'REQ_VALIDATION_ERROR');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "28 Vacancy - new building reflects the change at once",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/vacancies/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "vacancies",
+                "summary"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('1 room in maintenance', () => { pm.response.to.have.status(200); pm.expect(json.data[0]).to.include({ totalRooms: 1, maintenanceRooms: 1 }); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "29 Assets - add an air conditioner",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/assets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assets"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"ac_daikin_1_5hp\",\n  \"name\": \"Máy lạnh Daikin Inverter 1.5 HP\",\n  \"category\": \"APPLIANCE\",\n  \"standardMonthlyRentalFee\": 300000,\n  \"replacementValue\": 9500000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201', () => { pm.response.to.have.status(201); pm.expect(json.data).to.include({ code: 'AC_DAIKIN_1_5HP', installedUnits: 0 }); });",
+                  "pm.environment.set('newAssetId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "30 Install a unit in P.101 (catalogue fee by default)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/assets/room-assignments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assets",
+                "room-assignments"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{newRoomId}}\",\n  \"assetId\": \"{{newAssetId}}\",\n  \"serialNumber\": \"{{serial}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('serial', 'dk-' + Math.floor(Math.random() * 1e8));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 unit with default fee', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.data).to.include({ roomNumber: 'P.101', customMonthlyFee: 300000, conditionGrade: 'GRADE_A_NEW' });",
+                  "});",
+                  "pm.environment.set('newUnitId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "31 Install the same serial again → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/assets/room-assignments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assets",
+                "room-assignments"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{newRoomId}}\",\n  \"assetId\": \"{{newAssetId}}\",\n  \"serialNumber\": \"{{serial}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(409, 'RES_ALREADY_EXISTS');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "32 Room detail - lists the unit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/{{newRoomId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "{{newRoomId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('unit listed', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.rentedAssets.map((a) => a.roomAssetId)).to.eql([pm.environment.get('newUnitId')]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "33 Unit - re-grade and re-price",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/assets/room-assignments/{{newUnitId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assets",
+                "room-assignments",
+                "{{newUnitId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conditionGrade\": \"GRADE_B_GOOD\",\n  \"customMonthlyFee\": 250000,\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200', () => { pm.response.to.have.status(200); pm.expect(json.data).to.include({ conditionGrade: 'GRADE_B_GOOD', customMonthlyFee: 250000, version: 2 }); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "34 Unit - remove (soft delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/assets/room-assignments/{{newUnitId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assets",
+                "room-assignments",
+                "{{newUnitId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "35 Unit - remove again → 404",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/assets/room-assignments/{{newUnitId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assets",
+                "room-assignments",
+                "{{newUnitId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(404, 'RES_NOT_FOUND');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "36 Install the removed serial again → 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{landlordAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/assets/room-assignments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assets",
+                "room-assignments"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"{{newRoomId}}\",\n  \"assetId\": \"{{newAssetId}}\",\n  \"serialNumber\": \"{{serial}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "pm.test('201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "37 Isolation - PM of A opens the new building's room → 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/{{newRoomId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "{{newRoomId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(404, 'RES_NOT_FOUND');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "38 Isolation - PM of A sends the new building's header → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{newBuildingId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "pm.test('403 not one of your buildings', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "39 Assets - manager reads the catalogue of building A",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/assets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assets"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200: 10 air conditioners installed on floor 1', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.find((a) => a.code === 'AC_DAIKIN_1_5HP').installedUnits).to.eql(10);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "40 Assets - guard has no access → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guardAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/assets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assets"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(403, 'AUTH_FORBIDDEN_RESOURCE');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Public Listing (portfolio website, no sign-in)",
+      "item": [
+        {
+          "name": "01 Published buildings (anonymous)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200: building A listed by slug, building B not', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const a = json.data.find((b) => b.slug === pm.environment.get('publicSlug'));",
+                  "  pm.expect(a).to.include({ totalRooms: 80, monthlyRentFrom: 6500000, monthlyRentTo: 12000000 });",
+                  "  pm.expect(json.data.map((b) => b.name).join()).to.not.include('Riverside');",
+                  "});",
+                  "pm.test('browser / CDN caching headers', () => {",
+                  "  pm.expect(pm.response.headers.get('Cache-Control')).to.eql('public, max-age=60, stale-while-revalidate=300');",
+                  "  pm.expect(pm.response.headers.get('ETag')).to.match(/^W\\/\".+\"$/);",
+                  "});",
+                  "",
+                  "pm.test('no private data in the response', () => {",
+                  "  const text = pm.response.text();",
+                  "  ['0312345678', '0071000123456', 'Chủ nhà', 'serialNumber', 'replacementValue', 'MAINTENANCE', 'RESERVED', pm.environment.get('buildingA')]",
+                  "    .forEach((secret) => pm.expect(text).to.not.include(secret));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 Building profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 profile with floors, room types, utilities and deposit rule', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.floors).to.eql([1, 2, 3, 4, 5, 6, 7, 8]);",
+                  "  pm.expect(json.data.roomTypes.map((t) => t.code)).to.eql(['STUDIO', '1BR_DELUXE', 'DUPLEX']);",
+                  "  pm.expect(json.data.utilities).to.include({ electricityBillingMode: 'EVN_TIERED_QUOTA' });",
+                  "  pm.expect(json.data.depositMonths).to.eql(1);",
+                  "});",
+                  "",
+                  "pm.test('no private data in the response', () => {",
+                  "  const text = pm.response.text();",
+                  "  ['0312345678', '0071000123456', 'Chủ nhà', 'serialNumber', 'replacementValue', 'MAINTENANCE', 'RESERVED', pm.environment.get('buildingA')]",
+                  "    .forEach((secret) => pm.expect(text).to.not.include(secret));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 Unpublished or unknown building → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/riverside",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "riverside"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(404, 'RES_NOT_FOUND');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 Room types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/room-types",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "room-types"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200: 40 studios, 24 1BR, 16 duplex', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.map((t) => t.totalRooms)).to.eql([40, 24, 16]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 Floors with room numbers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/floors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "floors"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('8 floors of 10 rooms; floor 8 has one room under maintenance', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data).to.have.lengthOf(8);",
+                  "  pm.expect(json.data[0].roomNumbers[0]).to.eql('P.101');",
+                  "  pm.expect(json.data[7]).to.include({ floor: 8, totalRooms: 10, availableRooms: 9 });",
+                  "});",
+                  "pm.environment.set('floorsEtag', pm.response.headers.get('ETag'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06 Floors again with If-None-Match → 304",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "If-None-Match",
+                "value": "{{floorsEtag}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/floors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "floors"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('304 Not Modified, empty body', () => {",
+                  "  pm.response.to.have.status(304);",
+                  "  pm.expect(pm.response.text()).to.eql('');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07 Search - free duplexes on floor 8",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/rooms?roomType=duplex&floor=8&availability=available",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "rooms"
+              ],
+              "query": [
+                {
+                  "key": "roomType",
+                  "value": "duplex"
+                },
+                {
+                  "key": "floor",
+                  "value": "8"
+                },
+                {
+                  "key": "availability",
+                  "value": "available"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('P.809 only (P.810 is unavailable), 8 public fields', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.map((r) => r.roomNumber)).to.eql(['P.809']);",
+                  "  pm.expect(Object.keys(json.data[0]).sort()).to.eql(['areaSqm', 'availability', 'floor', 'maxOccupants', 'monthlyRent', 'roomNumber', 'roomTypeCode', 'roomTypeName']);",
+                  "});",
+                  "",
+                  "pm.test('no private data in the response', () => {",
+                  "  const text = pm.response.text();",
+                  "  ['0312345678', '0071000123456', 'Chủ nhà', 'serialNumber', 'replacementValue', 'MAINTENANCE', 'RESERVED', pm.environment.get('buildingA')]",
+                  "    .forEach((secret) => pm.expect(text).to.not.include(secret));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "08 Search - students: 3 people, under 9 million, cheapest first",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/rooms?occupants=3&maxPrice=9000000&sortBy=monthlyRent&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "rooms"
+              ],
+              "query": [
+                {
+                  "key": "occupants",
+                  "value": "3"
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "9000000"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "monthlyRent"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('24 1BR Deluxe rooms at 8.5M', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.meta.pagination.totalItems).to.eql(24);",
+                  "  json.data.forEach((r) => { pm.expect(r.maxOccupants).to.be.at.least(3); pm.expect(r.monthlyRent).to.be.at.most(9000000); });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09 Search - unavailable rooms never say why",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/rooms?availability=UNAVAILABLE",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "rooms"
+              ],
+              "query": [
+                {
+                  "key": "availability",
+                  "value": "UNAVAILABLE"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('P.810 shown as UNAVAILABLE', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.map((r) => [r.roomNumber, r.availability])).to.deep.include(['P.810', 'UNAVAILABLE']);",
+                  "});",
+                  "",
+                  "pm.test('no private data in the response', () => {",
+                  "  const text = pm.response.text();",
+                  "  ['0312345678', '0071000123456', 'Chủ nhà', 'serialNumber', 'replacementValue', 'MAINTENANCE', 'RESERVED', pm.environment.get('buildingA')]",
+                  "    .forEach((secret) => pm.expect(text).to.not.include(secret));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10 Search - invalid filters → 400",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/rooms?minPrice=9000000&maxPrice=1000000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "rooms"
+              ],
+              "query": [
+                {
+                  "key": "minPrice",
+                  "value": "9000000"
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "1000000"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(400, 'REQ_VALIDATION_ERROR');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11 Search - page size above 50 → 400",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/rooms?limit=51",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "rooms"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "51"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(400, 'REQ_VALIDATION_ERROR');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12 Room P.101 by number (case-insensitive) with equipment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/rooms/p.101",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "rooms",
+                "p.101"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 room with its air conditioner and monthly fee', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data).to.include({ roomNumber: 'P.101', floor: 1, roomTypeCode: 'STUDIO', depositMonths: 1 });",
+                  "  pm.expect(json.data.equipment[0]).to.include({ name: 'Máy lạnh Daikin Inverter 1.5 HP', monthlyFee: 300000 });",
+                  "});",
+                  "",
+                  "pm.test('no private data in the response', () => {",
+                  "  const text = pm.response.text();",
+                  "  ['0312345678', '0071000123456', 'Chủ nhà', 'serialNumber', 'replacementValue', 'MAINTENANCE', 'RESERVED', pm.environment.get('buildingA')]",
+                  "    .forEach((secret) => pm.expect(text).to.not.include(secret));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13 Unknown room → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/rooms/P.999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "rooms",
+                "P.999"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(404, 'RES_NOT_FOUND');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14 Vacancies per room type",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/vacancies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "vacancies"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 three types with free counts', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.map((v) => v.roomTypeCode)).to.eql(['STUDIO', '1BR_DELUXE', 'DUPLEX']);",
+                  "  pm.expect(json.data.find((v) => v.roomTypeCode === 'DUPLEX').availableRooms).to.eql(15);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15 Equipment & furniture offered",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/assets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "assets"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('catalogue with standard fees; air conditioners in the 10 floor-1 rooms', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.find((a) => a.name.startsWith('Máy lạnh')).roomsEquipped).to.eql(10);",
+                  "});",
+                  "",
+                  "pm.test('no private data in the response', () => {",
+                  "  const text = pm.response.text();",
+                  "  ['0312345678', '0071000123456', 'Chủ nhà', 'serialNumber', 'replacementValue', 'MAINTENANCE', 'RESERVED', pm.environment.get('buildingA')]",
+                  "    .forEach((secret) => pm.expect(text).to.not.include(secret));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16 Login - property manager (management area)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{pmPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('pmAccessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17 Rooms - find P.102",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms?floor=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms"
+              ],
+              "query": [
+                {
+                  "key": "floor",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('p102Id', json.data.find((r) => r.roomNumber === 'P.102').id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "18 Public - P.102 is free (cached now)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/rooms/P.102",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "rooms",
+                "P.102"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('AVAILABLE', () => pm.expect(json.data.availability).to.eql('AVAILABLE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "19 Staff - hide P.102 from the website",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/{{p102Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "{{p102Id}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isPubliclyListed\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 hidden', () => { pm.response.to.have.status(200); pm.expect(json.data.isPubliclyListed).to.eql(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "20 Public - P.102 is gone at once (cache evicted)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/rooms/P.102",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "rooms",
+                "P.102"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(404, 'RES_NOT_FOUND');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "21 Staff - show P.102 again",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/rooms/{{p102Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "rooms",
+                "{{p102Id}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isPubliclyListed\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 listed', () => { pm.response.to.have.status(200); pm.expect(json.data.isPubliclyListed).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "22 Public - P.102 back",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/public/buildings/{{publicSlug}}/rooms/P.102",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "public",
+                "buildings",
+                "{{publicSlug}}",
+                "rooms",
+                "P.102"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Tenants (people & PDPL)",
+      "item": [
+        {
+          "name": "01 Login - property manager A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{pmPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('pmAccessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 Login - tenant A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{tenantPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('tenantAccessToken', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 Register an adult (number typed with spaces and dots)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyễn Văn Postman\",\n  \"idDocumentType\": \"CCCD\",\n  \"idCardNumber\": \"{{tenantCccdSpaced}}\",\n  \"gender\": \"MALE\",\n  \"dateOfBirth\": \"1995-05-05\",\n  \"phone\": \"{{tenantPhone2}}\",\n  \"hometownAddress\": \"Huế\",\n  \"permanentAddress\": \"12 Lê Lợi, Huế\",\n  \"pdplConsentAccepted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// CCCD hợp lệ cho nam sinh 1995: tỉnh 079, chữ số thứ 4 = 0 (nam, 1900-1999), 95 = năm sinh",
+                  "const n = '079095' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0');",
+                  "pm.environment.set('tenantCccd', n);",
+                  "pm.environment.set('tenantCccdSpaced', n.slice(0, 3) + ' ' + n.slice(3, 6) + '.' + n.slice(6, 9) + '-' + n.slice(9));",
+                  "const p = '091' + Math.floor(1000000 + Math.random() * 8999999);",
+                  "pm.environment.set('tenantPhone2', p.slice(0, 4) + ' ' + p.slice(4, 7) + ' ' + p.slice(7));",
+                  "pm.environment.set('tenantPhone2E164', '+84' + p.slice(1));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 masked, phone normalised, no guardian', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.data.idCardMasked).to.eql('********' + pm.environment.get('tenantCccd').slice(-4));",
+                  "  pm.expect(json.data).to.include({ isMinor: false, phone: pm.environment.get('tenantPhone2E164'), hasLogin: false, version: 1 });",
+                  "  pm.expect(json.data.guardian).to.eql(null);",
+                  "});",
+                  "pm.environment.set('tenantId', json.data.id);",
+                  "",
+                  "pm.test('the full ID number and encrypted columns never leave the API', () => {",
+                  "  const text = pm.response.text();",
+                  "  const n = pm.environment.get('tenantCccd');",
+                  "  if (n) pm.expect(text).to.not.include(n);",
+                  "  pm.expect(text).to.not.match(/Encrypted|idCardHash/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 Same person again (typed differently) → 409 with the existing id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyễn Văn Postman\",\n  \"idDocumentType\": \"CCCD\",\n  \"idCardNumber\": \"{{tenantCccd}}\",\n  \"gender\": \"MALE\",\n  \"dateOfBirth\": \"1995-05-05\",\n  \"phone\": \"{{tenantPhone2}}\",\n  \"hometownAddress\": \"Huế\",\n  \"permanentAddress\": \"12 Lê Lợi, Huế\",\n  \"pdplConsentAccepted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(409, 'BIZ_TENANT_ID_CARD_DUPLICATE');",
+                  "pm.test('points to the existing profile', () => pm.expect(json.details[0].tenantId).to.eql(pm.environment.get('tenantId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 CCCD contradicts the gender → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyễn Văn Postman\",\n  \"idDocumentType\": \"CCCD\",\n  \"idCardNumber\": \"079095123456\",\n  \"gender\": \"FEMALE\",\n  \"dateOfBirth\": \"1995-05-05\",\n  \"phone\": \"{{tenantPhone2}}\",\n  \"hometownAddress\": \"Huế\",\n  \"permanentAddress\": \"12 Lê Lợi, Huế\",\n  \"pdplConsentAccepted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(400, 'REQ_VALIDATION_ERROR');",
+                  "pm.test('details on idCardNumber', () => pm.expect(json.details[0].field).to.eql('idCardNumber'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06 Foreigner by passport with a Korean phone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Park Ji-hoon\",\n  \"idDocumentType\": \"PASSPORT\",\n  \"idCardNumber\": \"{{passport}}\",\n  \"gender\": \"MALE\",\n  \"dateOfBirth\": \"1995-05-05\",\n  \"phone\": \"+82 10-9876-5432\",\n  \"hometownAddress\": \"Huế\",\n  \"permanentAddress\": \"12 Lê Lợi, Huế\",\n  \"pdplConsentAccepted\": true,\n  \"nationality\": \"kr\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('passport', 'M' + Math.floor(10000000 + Math.random() * 89999999));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 passport, KR, E.164 phone', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.data).to.include({ idDocumentType: 'PASSPORT', nationality: 'KR', phone: '+821098765432' });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07 Child without a guardian → 422 consent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyễn Bé Na\",\n  \"idDocumentType\": \"CCCD\",\n  \"idCardNumber\": \"{{childCccd}}\",\n  \"gender\": \"FEMALE\",\n  \"dateOfBirth\": \"2016-01-01\",\n  \"phone\": null,\n  \"hometownAddress\": \"Huế\",\n  \"permanentAddress\": \"12 Lê Lợi, Huế\",\n  \"pdplConsentAccepted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Số định danh cá nhân của bé gái sinh 2016: chữ số thứ 4 = 3 (nữ, 2000-2099), 16 = năm sinh",
+                  "pm.environment.set('childCccd', '079316' + String(Math.floor(Math.random() * 1e6)).padStart(6, '0'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(422, 'BIZ_PDPL_CONSENT_REQUIRED');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "08 Child with the adult as guardian",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyễn Bé Na\",\n  \"idDocumentType\": \"CCCD\",\n  \"idCardNumber\": \"{{childCccd}}\",\n  \"gender\": \"FEMALE\",\n  \"dateOfBirth\": \"2016-01-01\",\n  \"phone\": null,\n  \"hometownAddress\": \"Huế\",\n  \"permanentAddress\": \"12 Lê Lợi, Huế\",\n  \"pdplConsentAccepted\": true,\n  \"consentGuardianTenantId\": \"{{tenantId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('201 minor with guardian', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(json.data.isMinor).to.eql(true);",
+                  "  pm.expect(json.data.guardian.id).to.eql(pm.environment.get('tenantId'));",
+                  "});",
+                  "pm.environment.set('childId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09 Adult with a guardian → 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Nguyễn Văn Postman\",\n  \"idDocumentType\": \"CCCD\",\n  \"idCardNumber\": \"079095000001\",\n  \"gender\": \"MALE\",\n  \"dateOfBirth\": \"1995-05-05\",\n  \"phone\": \"{{tenantPhone2}}\",\n  \"hometownAddress\": \"Huế\",\n  \"permanentAddress\": \"12 Lê Lợi, Huế\",\n  \"pdplConsentAccepted\": true,\n  \"consentGuardianTenantId\": \"{{tenantId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(422, 'BIZ_TENANT_GUARDIAN_INVALID');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10 Search by name without diacritics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants?q=nguyen%20van%20postman&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "nguyen%20van%20postman"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('finds the new profile', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data.map((t) => t.id)).to.include(pm.environment.get('tenantId'));",
+                  "});",
+                  "",
+                  "pm.test('the full ID number and encrypted columns never leave the API', () => {",
+                  "  const text = pm.response.text();",
+                  "  const n = pm.environment.get('tenantCccd');",
+                  "  if (n) pm.expect(text).to.not.include(n);",
+                  "  pm.expect(text).to.not.match(/Encrypted|idCardHash/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11 Search by phone typed with spaces",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants?q={{tenantPhone2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "{{tenantPhone2}}"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('exactly that person', () => { pm.response.to.have.status(200); pm.expect(json.data.map((t) => t.id)).to.eql([pm.environment.get('tenantId')]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12 Children only",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants?minor=true&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ],
+              "query": [
+                {
+                  "key": "minor",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('every result is a minor, including the new child', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  json.data.forEach((t) => pm.expect(t.isMinor).to.eql(true));",
+                  "  pm.expect(json.data.map((t) => t.id)).to.include(pm.environment.get('childId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13 Adults only (minor=false)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants?minor=false&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ],
+              "query": [
+                {
+                  "key": "minor",
+                  "value": "false"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('every result is an adult', () => { pm.response.to.have.status(200); json.data.forEach((t) => pm.expect(t.isMinor).to.eql(false)); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14 Lookup by CCCD (blind index)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/lookup?idCardNumber={{tenantCccdSpaced}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "idCardNumber",
+                  "value": "{{tenantCccdSpaced}}"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 the same person', () => { pm.response.to.have.status(200); pm.expect(json.data.id).to.eql(pm.environment.get('tenantId')); });",
+                  "",
+                  "pm.test('the full ID number and encrypted columns never leave the API', () => {",
+                  "  const text = pm.response.text();",
+                  "  const n = pm.environment.get('tenantCccd');",
+                  "  if (n) pm.expect(text).to.not.include(n);",
+                  "  pm.expect(text).to.not.match(/Encrypted|idCardHash/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15 Lookup an unknown number → 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/lookup?idCardNumber=079095999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "idCardNumber",
+                  "value": "079095999999"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(404, 'RES_NOT_FOUND');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16 Profile detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants",
+                "{{tenantId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 masked detail', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data).to.include({ gender: 'MALE', dateOfBirth: '1995-05-05', pdplConsentVersion: 'v2026.1' });",
+                  "});",
+                  "",
+                  "pm.test('the full ID number and encrypted columns never leave the API', () => {",
+                  "  const text = pm.response.text();",
+                  "  const n = pm.environment.get('tenantCccd');",
+                  "  if (n) pm.expect(text).to.not.include(n);",
+                  "  pm.expect(text).to.not.match(/Encrypted|idCardHash/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17 Correct contact and refund account (version 1)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants",
+                "{{tenantId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"Postman@Example.com\",\n  \"refundBankAccount\": \"0071001234567\",\n  \"refundBankName\": \"Vietcombank\",\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 masked refund account, version 2', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data).to.include({ email: 'postman@example.com', refundBankAccountMasked: '*********4567', version: 2 });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "18 Stale version → 409",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants",
+                "{{tenantId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Overwrite\",\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(409, 'RES_CONCURRENCY_CONFLICT');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "19 Gender change contradicting the stored CCCD → 400",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pmAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants",
+                "{{tenantId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gender\": \"FEMALE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "expectError(400, 'REQ_VALIDATION_ERROR');",
+                  "pm.test('checked against the stored number', () => pm.expect(json.details[0].field).to.eql('idCardNumber'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "20 Tenant - own profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants",
+                "me"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "",
+                  "pm.test('200 the dev tenant, linked to the login', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(json.data).to.include({ fullName: 'Khách thuê A (dev)', hasLogin: true, idCardMasked: '********1234' });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "21 Tenant - search people → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(403, 'AUTH_FORBIDDEN_RESOURCE');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "22 Tenant - another profile → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tenantAccessToken}}"
+              },
+              {
+                "key": "X-Building-ID",
+                "value": "{{buildingA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tenants",
+                "{{tenantId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = (() => { try { return pm.response.json(); } catch (e) { return {}; } })();",
+                  "const expectError = (status, code) => {",
+                  "  pm.test(`${status} ${code}`, () => {",
+                  "    pm.response.to.have.status(status);",
+                  "    pm.expect(json.errorCode).to.eql(code);",
+                  "    pm.expect(json.traceId, 'traceId').to.be.a('string');",
+                  "  });",
+                  "};",
+                  "const decodeJwt = (t) => JSON.parse(Buffer.from(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));",
+                  "expectError(403, 'AUTH_FORBIDDEN_RESOURCE');"
                 ]
               }
             }

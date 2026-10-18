@@ -177,6 +177,9 @@ describe('DistributedLockModule (Enterprise Redlock Suite)', () => {
 
       const first = await memoryLocks.acquire('room:VN1:1A', { ttlMs: 5000 });
       await expect(memoryLocks.acquire('room:VN1:1A', { retryCount: 0 })).rejects.toThrow(ConflictException);
+      // Client nhận RES_LOCKED (thử lại được), không thấy tên khóa nội bộ
+      const error = await memoryLocks.acquire('room:VN1:1A', { retryCount: 0 }).catch((e) => e);
+      expect(error.getResponse()).toEqual({ errorCode: 'RES_LOCKED', message: expect.not.stringContaining('room:VN1:1A') });
 
       await expect(memoryLocks.release(first)).resolves.toBe(true);
       await expect(memoryLocks.acquire('room:VN1:1A', { retryCount: 0 })).resolves.toBeDefined();

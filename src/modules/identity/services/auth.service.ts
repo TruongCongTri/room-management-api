@@ -16,7 +16,7 @@ import {
   UnauthorizedException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import { AppConfigService } from '../../../core/config/app-config.service';
 import { EncryptionService } from '../../../core/security/encryption/encryption.service';
 import { JwtTokenService } from '../../../core/security/jwt/jwt-token.service';
@@ -31,6 +31,7 @@ import { NotificationDispatcherService } from '../../../infrastructure/notificat
 import { NotificationChannel } from '../../../infrastructure/notification/interfaces/notification.interface';
 import { NOTIFICATION_TEMPLATES } from '../../../infrastructure/notification/templates/template-renderer.service';
 import { User, UserStatus } from '../entities/user.entity';
+import { Building } from '../../properties/entities/building.entity';
 import { AuthSession, SessionRevokedReason } from '../entities/auth-session.entity';
 import { InvalidPhoneNumberError, maskPhoneNumber, normalizePhoneNumber } from '../domain/phone-number';
 import { checkPasswordPolicy, PasswordIssue } from '../domain/password-policy';
@@ -330,6 +331,10 @@ export class AuthService {
     const access = await this.directory.getAccess(user.id);
     const activeBuildingId = actor.tenantId ?? null;
     const residence = await this.selfScope.resolve(user.id, actor.tenantId);
+    const buildings = access.buildingIds.length
+      ? await this.dataSource.getRepository(Building).find({ where: { id: In(access.buildingIds) }, select: { id: true, name: true } })
+      : [];
+    const buildingNames = new Map(buildings.map((b) => [b.id, b.name]));
     return {
       id: user.id,
       fullName: user.fullName,
@@ -337,8 +342,7 @@ export class AuthService {
       status: user.status,
       roles: access.roles,
       activeBuildingId,
-      // Tên tòa nhà được bổ sung khi PropertiesModule (module 1) có bảng buildings
-      buildings: access.buildingIds.map((id) => ({ id, name: null })),
+      buildings: access.buildingIds.map((id) => ({ id, name: buildingNames.get(id) ?? null })),
       permissions: actor.rules
         .filter((rule) => rule.effect === PermissionEffect.GRANT)
         .map((rule) => formatPermission(rule))

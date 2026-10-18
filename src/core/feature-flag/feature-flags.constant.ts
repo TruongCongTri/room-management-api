@@ -16,6 +16,16 @@ export const FEATURE_FLAGS = {
   LATE_PAYMENT_PENALTY: 'late_payment_penalty',
   /** Ẩn danh hóa PII khách thuê sau hạn lưu trữ thuế (Luật 91/2025/QH15) */
   PII_AUTO_ANONYMIZATION: 'pii_auto_anonymization',
+  /** Website giới thiệu: các route /public/* (công tắc ngắt khẩn cấp - mặc định BẬT) */
+  PUBLIC_LISTING: 'public_listing',
 } as const;
+
+/**
+ * Giá trị mặc định trong mã cho cờ dạng "công tắc ngắt" (bật trừ khi bị tắt tường minh).
+ * FEATURE_FLAGS (env) và override Redis vẫn ghi đè được, vd: {"public_listing":{"enabled":false}}.
+ */
+export const FEATURE_FLAG_CODE_DEFAULTS: Readonly<Record<string, { enabled: boolean }>> = {
+  [FEATURE_FLAGS.PUBLIC_LISTING]: { enabled: true },
+};
 
 export type FeatureFlagKey = (typeof FEATURE_FLAGS)[keyof typeof FEATURE_FLAGS];

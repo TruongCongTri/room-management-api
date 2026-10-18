@@ -4,6 +4,7 @@
  *
  * REDIS_ENABLED=false → khóa trong tiến trình (chỉ an toàn khi chạy MỘT instance, dùng cho dev/test).
  */
+import { SystemErrorCode } from '../../../common/constants/error-codes.constant';
 import {
   ConflictException,
   Inject,
@@ -97,9 +98,12 @@ export class DistributedLockService implements OnModuleDestroy {
       }
     }
 
-    throw new ConflictException(
-      `Failed to acquire distributed lock for resource '${key}'. Resource is currently locked by another operation.`,
-    );
+    // Khóa nội bộ (lock:{buildingId}:…) chỉ ghi log, không trả cho client
+    this.logger.warn(`Failed to acquire distributed lock '${key}' after ${retryCount + 1} attempt(s).`);
+    throw new ConflictException({
+      errorCode: SystemErrorCode.RES_LOCKED,
+      message: 'This resource is being changed by another operation. Please retry in a moment.',
+    });
   }
 
   /**
